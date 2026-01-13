@@ -1,0 +1,11 @@
+langchain==0.1.16
+langchain-openai==0.1.7
+chromadb
+sentence-transformers==2.5.1
+gradio
+pandas
+python-dotenv
+langchain-community
+langchain-huggingface
+pypdf
+openai
