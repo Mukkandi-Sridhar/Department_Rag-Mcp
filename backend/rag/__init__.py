@@ -1,0 +1,1 @@
+"""PDF-only RAG support."""
