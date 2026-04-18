@@ -3,23 +3,27 @@ import time
 from typing import Any
 
 from fastapi import APIRouter, Header, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.auth.firebase_auth import verify_firebase_token
 from backend.config import settings
 from backend.database.firestore import db_client
-from backend.database.validation import validate_student
-from backend.llm.formatter import format_student_answer
-from backend.llm.intent import detect_intent, normalize_query
+from backend.orchestration import run_chat_graph
+from backend.llm.intent import normalize_query
 from backend.llm.responses import build_response
-from backend.tools.tools import get_student_data, retrieve_documents
 
 
 router = APIRouter()
 
 
+class ChatHistoryItem(BaseModel):
+    role: str
+    content: str
+
+
 class ChatRequest(BaseModel):
     message: str
+    history: list[ChatHistoryItem] = Field(default_factory=list)
 
 
 def _duration_ms(started_at: float) -> int:
@@ -106,6 +110,14 @@ async def chat(
     current_tool = None
     original_message = request.message or ""
     query = normalize_query(original_message)
+    history = [
+        {
+            "role": item.role.strip().lower(),
+            "content": item.content.strip(),
+        }
+        for item in request.history
+        if item.content.strip()
+    ]
 
     if not query:
         return _finish(
@@ -143,6 +155,7 @@ async def chat(
         reg_no = str(profile.get("reg_no", "")).strip().upper()
 
         if role in {"faculty", "hod"}:
+            role_label = "HOD" if role == "hod" else "Faculty"
             return _finish(
                 started_at=started_at,
                 uid=uid,
@@ -150,7 +163,7 @@ async def chat(
                 message=original_message,
                 intent=intent,
                 status="error",
-                answer=f"{role.upper()} login is recognized, but {role.upper()} chat tools are not enabled yet.",
+                answer=f"{role_label} login is recognized, but {role_label} chat tools are not enabled yet.",
                 data={
                     "role": role,
                     "faculty_id": str(profile.get("faculty_id", "")).strip(),
@@ -182,90 +195,28 @@ async def chat(
                 error="profile_not_linked",
             )
 
-        intent = detect_intent(query)
+        graph_result = await asyncio.to_thread(
+            run_chat_graph,
+            original_message=original_message,
+            query=query,
+            history=history,
+            uid=uid,
+            reg_no=reg_no,
+            role=role,
+        )
+        intent = graph_result.get("intent", intent)
+        current_tool = graph_result.get("tool_used")
 
-        if intent == "unclear_query":
+        if not graph_result.get("status") or not graph_result.get("answer"):
             return _finish(
                 started_at=started_at,
                 uid=uid,
                 reg_no=reg_no,
                 message=original_message,
                 intent=intent,
-                status="needs_clarification",
-                answer=(
-                    "You can ask things like: 'Do I have backlogs?', "
-                    "'What is my CGPA?', 'Am I placement ready?', "
-                    "or ask about a document."
-                ),
-            )
-
-        if intent == "student_data_query":
-            tool_used = "get_student_data"
-            current_tool = tool_used
-            raw_student = await asyncio.wait_for(
-                asyncio.to_thread(get_student_data, reg_no),
-                timeout=settings.student_tool_timeout_seconds,
-            )
-
-            if not raw_student:
-                return _finish(
-                    started_at=started_at,
-                    uid=uid,
-                    reg_no=reg_no,
-                    message=original_message,
-                    intent=intent,
-                    status="error",
-                    answer="Your student record was not found in the system.",
-                    tool_used=tool_used,
-                    error="student_record_not_found",
-                )
-
-            student = validate_student(raw_student)
-            answer = format_student_answer(query, student)
-            return _finish(
-                started_at=started_at,
-                uid=uid,
-                reg_no=reg_no,
-                message=original_message,
-                intent=intent,
-                status="answered",
-                answer=answer,
-                data=student,
-                tool_used=tool_used,
-            )
-
-        if intent == "document_query":
-            tool_used = "retrieve_documents"
-            current_tool = tool_used
-            docs = await asyncio.wait_for(
-                asyncio.to_thread(retrieve_documents, query),
-                timeout=settings.rag_tool_timeout_seconds,
-            )
-
-            if not docs:
-                return _finish(
-                    started_at=started_at,
-                    uid=uid,
-                    reg_no=reg_no,
-                    message=original_message,
-                    intent=intent,
-                    status="error",
-                    answer="I could not find relevant information in the uploaded documents.",
-                    tool_used=tool_used,
-                    error="no_document_match",
-                )
-
-            answer = docs[0]["text"]
-            return _finish(
-                started_at=started_at,
-                uid=uid,
-                reg_no=reg_no,
-                message=original_message,
-                intent=intent,
-                status="answered",
-                answer=answer,
-                data={"sources": [doc.get("source", {}) for doc in docs]},
-                tool_used=tool_used,
+                status="error",
+                answer="I could not route that request.",
+                error="graph_incomplete",
             )
 
         return _finish(
@@ -274,9 +225,11 @@ async def chat(
             reg_no=reg_no,
             message=original_message,
             intent=intent,
-            status="error",
-            answer="I could not route that request.",
-            error="unsupported_intent",
+            status=graph_result["status"],
+            answer=graph_result["answer"],
+            data=graph_result.get("data"),
+            tool_used=current_tool,
+            error=graph_result.get("error"),
         )
 
     except asyncio.TimeoutError:

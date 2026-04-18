@@ -21,6 +21,8 @@ def build_mapping(args: argparse.Namespace) -> dict:
         "role": role,
         "email": args.email or "",
     }
+    if getattr(args, "login_code", ""):
+        mapping["login_code"] = args.login_code.strip().upper()
 
     if role == "student":
         if not args.reg_no:
@@ -46,6 +48,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--email", default="", help="User email for reference")
     parser.add_argument("--reg-no", default="", help="Student register number")
     parser.add_argument("--faculty-id", default="", help="Faculty document ID")
+    parser.add_argument(
+        "--login-code",
+        default="",
+        help="Optional college login code, e.g. MUKK2006",
+    )
     return parser.parse_args()
 
 

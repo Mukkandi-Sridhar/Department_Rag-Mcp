@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Profile | Department AI</title>
+    <link rel="stylesheet" href="/frontend/styles.css" />
+  </head>
+  <body class="workspace-body">
+    <div class="app-shell">
+      <aside class="sidebar">
+        <a class="brand" href="/dashboard">
+          <span class="brand-mark">DA</span>
+          <div>
+            <strong>Department AI</strong>
+            <span>Academic workspace</span>
+          </div>
+        </a>
+
+        <div class="sidebar-copy">
+          <strong>Account context stays visible.</strong>
+          <span>Check the identity and role linked to your current sign-in.</span>
+        </div>
+
+        <nav class="sidebar-nav">
+          <a class="nav-link" href="/dashboard">Dashboard</a>
+          <a class="nav-link active" href="/profile">Profile</a>
+          <a class="nav-link" href="/documents">Documents</a>
+        </nav>
+
+        <div class="sidebar-card">
+          <strong>Profile view</strong>
+          <span>Useful for checking role mappings, email, UID, and register number.</span>
+        </div>
+
+        <button type="button" class="secondary logout-button" id="logout-button">
+          Sign Out
+        </button>
+      </aside>
+
+      <main class="workspace-main">
+        <header class="workspace-header">
+          <div>
+            <span class="eyebrow">Profile</span>
+            <h1>Your department account</h1>
+            <p>Review the identity details currently attached to your authenticated session.</p>
+          </div>
+          <div class="workspace-user" id="workspace-user">Checking session...</div>
+        </header>
+
+        <section class="workspace-grid single-column">
+          <article class="panel panel-xl">
+            <div class="panel-head">
+              <h2>Account details</h2>
+              <p>Review the role and profile information linked to your sign-in.</p>
+            </div>
+            <p class="status" id="profile-status"></p>
+            <div class="profile profile-card" id="profile-details"></div>
+          </article>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="/frontend/profile.js"></script>
+  </body>
+</html>

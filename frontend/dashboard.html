@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Department AI | Premium Chat</title>
+    <!-- Resource Prioritization -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net">
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+    
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <!-- Critical Styles -->
+    <link rel="stylesheet" href="/frontend/styles.css" />
+    
+    <!-- Non-blocking Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="print" onload="this.media='all'">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" defer></script>
+  </head>
+  <body class="workspace-body">
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">DA</div>
+          <strong>Department AI</strong>
+        </div>
+
+        <button type="button" class="primary sidebar-action" id="new-chat-button">
+          + New Chat
+        </button>
+
+        <nav class="sidebar-nav">
+          <a class="nav-link active" href="/dashboard">
+            <span>Chat</span>
+          </a>
+          <a class="nav-link" href="/profile">
+            <span>Profile</span>
+          </a>
+          <a class="nav-link" href="/documents">
+            <span>Documents</span>
+          </a>
+        </nav>
+
+        <div class="sidebar-section">
+          <span class="sidebar-section-title">Common Queries</span>
+          <div class="sidebar-prompt-list">
+            <button type="button" class="sidebar-prompt" data-prompt="Do I have backlogs?">Backlogs</button>
+            <button type="button" class="sidebar-prompt" data-prompt="What is my CGPA?">CGPA</button>
+            <button type="button" class="sidebar-prompt" data-prompt="Am I placement ready?">Placement Readiness</button>
+          </div>
+        </div>
+
+        <button type="button" class="logout-button" id="logout-button">
+          Sign Out
+        </button>
+      </aside>
+
+      <main class="chat-main">
+        <header class="chat-topbar">
+          <h1>Academic Assistant</h1>
+          <div class="workspace-user" id="workspace-user" style="font-size: 13px; color: var(--text-muted);">...</div>
+        </header>
+
+        <section class="chat-stage">
+          <div class="conversation-feed" id="conversation-feed">
+            <!-- Welcome View -->
+            <div class="welcome-container" id="welcome-card">
+              <div class="welcome-header">
+                <h2>How can I help you today?</h2>
+              </div>
+              <div class="starter-grid">
+                <div class="starter-card" data-prompt="Do I have backlogs?">
+                  <strong>Check Backlogs</strong>
+                  <span>Verify your academic records.</span>
+                </div>
+                <div class="starter-card" data-prompt="What is my CGPA?">
+                  <strong>Academic Score</strong>
+                  <span>Get your latest CGPA.</span>
+                </div>
+                <div class="starter-card" data-prompt="Am I placement ready?">
+                  <strong>Career Check</strong>
+                  <span>Eligibility for placements.</span>
+                </div>
+                <div class="starter-card" data-prompt="Summarize the latest department circular.">
+                  <strong>Document Analysis</strong>
+                  <span>Insights from PDFs.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <footer class="composer-dock">
+          <form id="chat-form" class="composer-shell">
+            <div class="composer-field">
+              <textarea
+                id="question"
+                placeholder="Message Department AI..."
+                rows="1"
+              ></textarea>
+            </div>
+            <div class="composer-actions">
+              <span class="chat-note">SaaS Level AI Assistant</span>
+              <button type="submit" id="send-button">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+              </button>
+            </div>
+          </form>
+        </footer>
+      </main>
+    </div>
+
+    <script type="module" src="/frontend/dashboard.js"></script>
+  </body>
+</html>
+

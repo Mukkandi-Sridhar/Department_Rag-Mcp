@@ -1,5 +1,13 @@
-import { initializeApp } from "firebase/app";
-import { getAnalytics, isSupported } from "firebase/analytics";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-app.js";
+import {
+  getAnalytics,
+  isSupported,
+} from "https://www.gstatic.com/firebasejs/12.7.0/firebase-analytics.js";
+import {
+  browserLocalPersistence,
+  getAuth,
+  setPersistence,
+} from "https://www.gstatic.com/firebasejs/12.7.0/firebase-auth.js";
 
 
 export const firebaseConfig = {
@@ -13,6 +21,8 @@ export const firebaseConfig = {
 };
 
 export const app = initializeApp(firebaseConfig);
+export const auth = getAuth(app);
+export const authReady = setPersistence(auth, browserLocalPersistence).catch(() => null);
 
 export const analyticsPromise = isSupported().then((supported) => {
   if (!supported) {

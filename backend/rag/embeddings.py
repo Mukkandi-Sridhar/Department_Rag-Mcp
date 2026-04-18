@@ -2,12 +2,12 @@ from backend.config import settings
 
 
 def get_embeddings():
-    if settings.gemini_api_key:
-        from langchain_google_genai import GoogleGenerativeAIEmbeddings
+    if settings.openai_api_key:
+        from langchain_openai import OpenAIEmbeddings
 
-        return GoogleGenerativeAIEmbeddings(
-            model=settings.gemini_embedding_model,
-            google_api_key=settings.gemini_api_key,
+        return OpenAIEmbeddings(
+            model=settings.openai_embedding_model,
+            api_key=settings.openai_api_key,
         )
 
     from langchain_huggingface import HuggingFaceEmbeddings

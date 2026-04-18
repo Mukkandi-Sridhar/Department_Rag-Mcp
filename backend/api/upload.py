@@ -8,7 +8,6 @@ from fastapi import APIRouter, File, Header, HTTPException, UploadFile, status
 from backend.auth.firebase_auth import verify_firebase_token
 from backend.config import settings
 from backend.llm.responses import build_response
-from backend.rag.ingest import ingest_pdf
 
 
 router = APIRouter()
@@ -36,6 +35,8 @@ async def upload_pdf(
     file_path.write_bytes(content)
 
     try:
+        from backend.rag.ingest import ingest_pdf
+
         result = await asyncio.wait_for(
             asyncio.to_thread(ingest_pdf, file_path),
             timeout=settings.rag_tool_timeout_seconds,
@@ -46,6 +47,14 @@ async def upload_pdf(
             intent="document_query",
             answer="PDF indexing took too long. Please try again.",
             error="timeout",
+            duration_ms=int((time.perf_counter() - started_at) * 1000),
+        )
+    except RuntimeError as exc:
+        return build_response(
+            status="error",
+            intent="document_query",
+            answer=str(exc),
+            error="rag_unavailable",
             duration_ms=int((time.perf_counter() - started_at) * 1000),
         )
 

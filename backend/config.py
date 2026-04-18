@@ -4,7 +4,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 
-load_dotenv()
+load_dotenv(encoding="utf-8-sig")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -29,9 +29,9 @@ class Settings:
     student_tool_timeout_seconds = float(os.getenv("STUDENT_TOOL_TIMEOUT_SECONDS", "3"))
     rag_tool_timeout_seconds = float(os.getenv("RAG_TOOL_TIMEOUT_SECONDS", "8"))
 
-    gemini_api_key = os.getenv("GOOGLE_API_KEY", "")
-    gemini_embedding_model = os.getenv("GEMINI_EMBEDDING_MODEL", "models/text-embedding-004")
-    gemini_chat_model = os.getenv("GEMINI_CHAT_MODEL", "gemini-1.5-flash")
+    openai_api_key = os.getenv("OPENAI_API_KEY", "")
+    openai_embedding_model = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+    openai_chat_model = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini")
 
 
 settings = Settings()
