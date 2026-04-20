@@ -1,12 +1,14 @@
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.api.chat import router as chat_router
 from backend.api.me import router as me_router
 from backend.api.upload import router as upload_router
+from backend.api.admin import router as admin_router
+
 
 from mcp.server.sse import SseServerTransport
 
@@ -35,7 +37,9 @@ async def handle_messages(request: Request):
 app.include_router(chat_router)
 app.include_router(me_router)
 app.include_router(upload_router)
+app.include_router(admin_router)
 app.mount("/frontend", StaticFiles(directory=str(FRONTEND_DIR)), name="frontend")
+
 
 
 @app.get("/")
@@ -66,3 +70,9 @@ def frontend_documents():
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return Response(status_code=204)
+

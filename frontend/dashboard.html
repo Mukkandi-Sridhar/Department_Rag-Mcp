@@ -3,118 +3,110 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Department AI | Premium Chat</title>
-    <!-- Resource Prioritization -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="preconnect" href="https://cdn.jsdelivr.net">
-    <link rel="preconnect" href="https://cdnjs.cloudflare.com">
-    
-    <!-- Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    
-    <!-- Critical Styles -->
-    <link rel="stylesheet" href="/frontend/styles.css" />
-    
-    <!-- Non-blocking Scripts -->
+    <title>Department AI | Assistant</title>
+    <link rel="stylesheet" href="/frontend/css/styles.css" />
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="print" onload="this.media='all'">
+    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" defer></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
   </head>
-  <body class="workspace-body">
+  <body>
     <div class="app-shell">
+      <!-- 5. Sidebar -->
       <aside class="sidebar">
-        <div class="brand">
-          <div class="brand-mark">DA</div>
-          <strong>Department AI</strong>
-        </div>
-
-        <button type="button" class="primary sidebar-action" id="new-chat-button">
-          + New Chat
+        <!-- New Chat Button -->
+        <button class="new-chat-btn-large" id="new-chat-button">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+          <span>New chat</span>
         </button>
 
-        <nav class="sidebar-nav">
-          <a class="nav-link active" href="/dashboard">
-            <span>Chat</span>
+        <div class="sidebar-scroll-area">
+          <a class="nav-item" href="/documents" style="margin-top: 8px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+            <span>Documents Hub</span>
           </a>
-          <a class="nav-link" href="/profile">
-            <span>Profile</span>
-          </a>
-          <a class="nav-link" href="/documents">
-            <span>Documents</span>
-          </a>
-        </nav>
 
-        <div class="sidebar-section">
-          <span class="sidebar-section-title">Common Queries</span>
-          <div class="sidebar-prompt-list">
-            <button type="button" class="sidebar-prompt" data-prompt="Do I have backlogs?">Backlogs</button>
-            <button type="button" class="sidebar-prompt" data-prompt="What is my CGPA?">CGPA</button>
-            <button type="button" class="sidebar-prompt" data-prompt="Am I placement ready?">Placement Readiness</button>
+          <div class="sidebar-section-header">GPTs</div>
+          <a class="nav-item">
+             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7L12 12L22 7L12 2Z"></path><path d="M2 17L12 22L22 17"></path><path d="M2 12L12 17L22 12"></path></svg>
+             <span>Department RAG</span>
+          </a>
+
+          <div class="sidebar-section-header">Recents</div>
+          <div id="history-list">
+            <!-- Dynamically populated -->
           </div>
         </div>
 
-        <button type="button" class="logout-button" id="logout-button">
-          Sign Out
-        </button>
+        <div class="sidebar-user-row" id="user-profile-row">
+          <div class="user-avatar-circle" id="user-initials">SR</div>
+          <div class="user-name" id="user-display-name">Sridhar Royal</div>
+        </div>
       </aside>
 
-      <main class="chat-main">
-        <header class="chat-topbar">
-          <h1>Academic Assistant</h1>
-          <div class="workspace-user" id="workspace-user" style="font-size: 13px; color: var(--text-muted);">...</div>
+      <!-- 4.1 Main Area -->
+      <main class="main-content">
+        <header class="top-header" id="main-header">
+          <button class="model-selector-btn">
+            <span>ChatGPT 4o</span>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </button>
         </header>
 
-        <section class="chat-stage">
-          <div class="conversation-feed" id="conversation-feed">
-            <!-- Welcome View -->
-            <div class="welcome-container" id="welcome-card">
-              <div class="welcome-header">
-                <h2>How can I help you today?</h2>
+        <section class="chat-container" id="conversation-feed">
+          <div class="chat-thread" id="chat-thread">
+            <div id="welcome-screen" class="welcome-screen">
+              <div class="spark-logo">
+                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="12" cy="12" r="10" fill="black"/>
+                    <path d="M12 8V16M8 12H16" stroke="white" stroke-width="2" stroke-linecap="round"/>
+                </svg>
               </div>
-              <div class="starter-grid">
-                <div class="starter-card" data-prompt="Do I have backlogs?">
-                  <strong>Check Backlogs</strong>
-                  <span>Verify your academic records.</span>
-                </div>
-                <div class="starter-card" data-prompt="What is my CGPA?">
-                  <strong>Academic Score</strong>
-                  <span>Get your latest CGPA.</span>
-                </div>
-                <div class="starter-card" data-prompt="Am I placement ready?">
-                  <strong>Career Check</strong>
-                  <span>Eligibility for placements.</span>
-                </div>
-                <div class="starter-card" data-prompt="Summarize the latest department circular.">
-                  <strong>Document Analysis</strong>
-                  <span>Insights from PDFs.</span>
-                </div>
-              </div>
+              <h1 class="welcome-title">Where should we begin?</h1>
+              <div id="starter-grid"></div>
             </div>
           </div>
         </section>
 
-        <footer class="composer-dock">
-          <form id="chat-form" class="composer-shell">
-            <div class="composer-field">
-              <textarea
-                id="question"
-                placeholder="Message Department AI..."
-                rows="1"
-              ></textarea>
+        <!-- 9. Prompt Input Bar -->
+        <section class="composer-container">
+          <div class="composer-inner">
+            <div class="composer-status-dot"></div>
+            <button class="composer-action-btn" title="Add attachment">
+               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            </button>
+            <form id="chat-form">
+              <textarea id="question" rows="1" placeholder="Ask anything" autocomplete="off"></textarea>
+              <div class="composer-right-actions">
+                 <button type="button" class="composer-action-btn" style="color: #f4ac36;" title="Voice">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
+                 </button>
+                 <button type="submit" id="send-button" disabled>
+                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+                 </button>
+              </div>
+            </form>
+            <div class="composer-footer">
+              ChatGPT can make mistakes. Check important info.
             </div>
-            <div class="composer-actions">
-              <span class="chat-note">SaaS Level AI Assistant</span>
-              <button type="submit" id="send-button">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
-              </button>
-            </div>
-          </form>
-        </footer>
+          </div>
+        </section>
       </main>
     </div>
 
-    <script type="module" src="/frontend/dashboard.js"></script>
+    <!-- Menus / Overlays -->
+    <div id="user-menu" style="display:none; position:absolute; bottom:60px; left:12px; width:240px; background:#212121; border:1px solid #333; border-radius:12px; padding:6px; z-index:100; box-shadow:0 10px 15px -3px rgba(0,0,0,0.5);">
+       <a href="/profile" class="nav-item">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:10px;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+          <span>Settings</span>
+       </a>
+       <button id="logout-button" class="nav-item" style="width:100%; border:none; background:transparent; justify-content:flex-start; color:#ef4444;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:10px;"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+          <span>Log Out</span>
+       </button>
+    </div>
+
+    <script type="module" src="/frontend/js/dashboard.js"></script>
   </body>
 </html>
 

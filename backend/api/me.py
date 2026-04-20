@@ -5,8 +5,8 @@ from typing import Any
 from fastapi import APIRouter, Header, HTTPException
 
 from backend.auth.firebase_auth import verify_firebase_token
-from backend.config import settings
-from backend.database.firestore import db_client
+from backend.core.config import settings
+from backend.database.neo4j_client import db_client
 from backend.llm.responses import build_response
 
 
@@ -45,10 +45,15 @@ async def me(authorization: str | None = Header(default=None)) -> dict[str, Any]
             "role": str(profile.get("role", "")).lower(),
             "email": profile.get("email") or auth_user.email or "",
         }
-        if profile.get("reg_no"):
-            safe_profile["reg_no"] = str(profile.get("reg_no", "")).strip().upper()
-        if profile.get("faculty_id"):
-            safe_profile["faculty_id"] = str(profile.get("faculty_id", "")).strip()
+        
+        reg_no = profile.get("reg_no")
+        if reg_no:
+            safe_profile["reg_no"] = str(reg_no).strip().upper()
+            # If student, fetch and include full academic info
+            if safe_profile["role"] == "student":
+                student_data = db_client.get_student_data(safe_profile["reg_no"])
+                if student_data:
+                    safe_profile["academic"] = student_data
 
         return build_response(
             status="answered",

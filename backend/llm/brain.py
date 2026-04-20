@@ -2,51 +2,54 @@ import json
 from functools import lru_cache
 from typing import Any
 
-from openai import OpenAI
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 
-from backend.config import settings
+
+from backend.core.config import settings
 
 
-PLANNER_SYSTEM_PROMPT = """You are the retrieval planner for a college department AI assistant.
+PLANNER_SYSTEM_PROMPT = """You are the intelligent router for a college department AI assistant.
+User role provided: {role}
 Return only valid JSON with this exact shape:
 {
-  "intent": "direct_response" | "student_data_query" | "document_query" | "unclear_query",
-  "tool": "get_student_data" | "retrieve_documents" | null,
+  "intent": "direct_response" | "student_data_query" | "document_query" | "unclear_query" | "faculty_query" | "out_of_scope",
+  "tool": "get_student_profile" | "search_department_documents" | "update_student_data" | "add_student" | "remove_student" | "list_students" | null,
   "student_fields": ["reg_no" | "name" | "cgpa" | "backlogs" | "risk" | "performance" | "placement"],
-  "answer": "short user-facing message"
+  "action_payload": {},
+  "answer": "short message"
 }
 
-Routing rules:
-- Greetings, thanks, casual conversation, and simple help messages -> direct_response with no tool.
-- Questions about the current student's backlogs, CGPA, placement readiness, risk, performance, or profile summary -> student_data_query with tool get_student_data.
-- Questions about policies, syllabus, circulars, PDFs, regulations, or uploaded documents -> document_query with tool retrieve_documents.
-- If the user is ambiguous and you need them to ask more clearly -> unclear_query with no tool and a helpful guidance message.
+ROUTING EXAMPLES (CRITICAL):
+- "what is my cgpa" (Role: STUDENT) -> {"intent": "student_data_query", "tool": "get_student_profile", "answer": "I will check your score."}
+- "who has more backlogs" (Role: FACULTY) -> {"intent": "faculty_query", "tool": "list_students", "answer": "I am gathering the student roster."}
+- "tell me about Ammar" (Role: FACULTY) -> {"intent": "faculty_query", "tool": "get_student_profile", "action_payload": {"reg_no": "AMMAR"}, "answer": "Fetching details for Ammar."}
+- "update Sridhar's cgpa to 8.5" (Role: FACULTY) -> {"intent": "faculty_query", "tool": "update_student_data", "action_payload": {"reg_no": "SRIDHAR", "fields": {"cgpa": 8.5}}, "answer": "Updating record..."}
 
-Field-selection rules:
-- For student_data_query, include only the student fields truly needed to answer the question.
-- Do not include extra student fields just because they exist.
-- For document_query, direct_response, and unclear_query, student_fields must be [].
+Routing based on ROLE:
+- If role=="student", you CANNOT use any tool except "get_student_profile" to ask about their own data.
+- If role=="FACULTY" or "HOD", you HAVE ADMIN ACCESS. You MUST pick a tool (e.g., "list_students" or "get_student_profile") if the user asks for ANY student record. NEVER say "out_of_scope" for student database queries when in faculty mode.
 
-Mandatory routing examples:
-- "hi" -> {"intent":"direct_response","tool":null,"student_fields":[]}
-- "do i have backlogs?" -> {"intent":"student_data_query","tool":"get_student_data","student_fields":["backlogs"]}
-- "what is my cgpa?" -> {"intent":"student_data_query","tool":"get_student_data","student_fields":["cgpa"]}
-- "am i placement ready?" -> {"intent":"student_data_query","tool":"get_student_data","student_fields":["placement"]}
-- "give me my profile summary" -> {"intent":"student_data_query","tool":"get_student_data","student_fields":["name","reg_no","cgpa","backlogs","risk","performance","placement"]}
-- "what does the policy say about internships?" -> {"intent":"document_query","tool":"retrieve_documents","student_fields":[]}
-- "tell me something" -> {"intent":"unclear_query","tool":null,"student_fields":[]}
+Questions about policies, syllabus, circulars, PDFs, etc -> document_query with tool search_department_documents.
 
-For greetings and casual messages, do not ask the user to rephrase. Reply warmly and mention that you can help with academics or department documents.
+For direct_response, set tool=null."""
 
-Be concise. Never mention internal routing or tools in the answer field."""
-
-STUDENT_ANSWER_SYSTEM_PROMPT = """You answer student academic questions using verified structured student data.
-Be concise, direct, and helpful.
-Do not invent data. Use only the provided student record."""
+STUDENT_ANSWER_SYSTEM_PROMPT = """You answer student academic and personal questions using verified structured student data.
+Be concise, direct, and helpful. Use only the provided student record."""
 
 DOCUMENT_ANSWER_SYSTEM_PROMPT = """You answer department document questions using only the retrieved document snippets.
-Be concise, factual, and direct.
-If the snippets are weak, answer cautiously and only using what is present."""
+Be concise, factual, and direct."""
+
+FACULTY_ANSWER_SYSTEM_PROMPT = """You are the AI assistant in FACULTY/ADMIN mode.
+You have FULL ACCESS to the department records. 
+You answer faculty administrative questions based on the retrieved data.
+If result data is present, summarize it professionally.
+IMPORTANT: You are an administrator. Do NOT say you cannot access records. If the data is empty, say no records matched the filter."""
+
+GENERAL_CONVERSATIONAL_PROMPT = """You are the intelligent assistant for the college department. 
+Engage normally with the user based on their input. 
+You are chatting with a user whose role is: {role}
+"""
 
 ALLOWED_STUDENT_FIELDS = {
     "reg_no",
@@ -59,129 +62,149 @@ ALLOWED_STUDENT_FIELDS = {
 }
 
 
-def _get_client() -> OpenAI:
+def _get_client():
     if not settings.openai_api_key:
         raise RuntimeError("OPENAI_API_KEY is not configured.")
-    return OpenAI(api_key=settings.openai_api_key)
+    # Assuming json mode for planner, generic for text
+    return ChatOpenAI(api_key=settings.openai_api_key, model=settings.openai_chat_model)
 
-
-def _chat_json(messages: list[dict[str, str]]) -> dict[str, Any]:
-    client = _get_client()
-    response = client.chat.completions.create(
-        model=settings.openai_chat_model,
-        response_format={"type": "json_object"},
-        messages=messages,
-        temperature=0,
-    )
-    content = response.choices[0].message.content or "{}"
+def _chat_json(messages: list) -> dict[str, Any]:
+    client = _get_client().bind(response_format={"type": "json_object"})
+    response = client.invoke(messages)
+    content = response.content or "{}"
     return json.loads(content)
 
-
-def _chat_text(messages: list[dict[str, str]]) -> str:
+def _chat_text(messages: list) -> str:
     client = _get_client()
-    response = client.chat.completions.create(
-        model=settings.openai_chat_model,
-        messages=messages,
-        temperature=0.2,
-    )
-    return (response.choices[0].message.content or "").strip()
-
+    response = client.invoke(messages)
+    return (response.content or "").strip()
 
 def _build_messages(
     system_prompt: str,
     user_query: str,
     history: list[dict[str, str]] | None = None,
-) -> list[dict[str, str]]:
-    messages = [{"role": "system", "content": system_prompt}]
+) -> list:
+    messages = [SystemMessage(content=system_prompt)]
     
     # Process history
     for entry in history or []:
         role = str(entry.get("role", "")).strip().lower()
         content = str(entry.get("content", "")).strip()
-        if role in {"user", "assistant"} and content:
-            messages.append({"role": role, "content": content})
-            
+        if content:
+            if role == "user":
+                messages.append(HumanMessage(content=content))
+            elif role == "assistant":
+                messages.append(AIMessage(content=content))
+                
     # Add final user query
-    messages.append({"role": "user", "content": user_query})
+    messages.append(HumanMessage(content=user_query))
     return messages
 
 
-def plan_query(query: str, history: list[dict[str, str]] | None = None) -> dict[str, Any]:
-    messages = _build_messages(PLANNER_SYSTEM_PROMPT, query, history)
-    data = _chat_json(messages)
+@lru_cache(maxsize=1)
+def _get_openai_model():
+    if not settings.openai_api_key:
+        raise RuntimeError("OPENAI_API_KEY is not configured.")
+    return ChatOpenAI(
+        api_key=settings.openai_api_key, 
+        model=settings.openai_chat_model,
+        temperature=0
+    )
 
+
+def plan_query(query: str, role: str = "student", history: list[dict[str, str]] | None = None) -> dict[str, Any]:
+    """Synchronous plan wrapper."""
+    system_prompt = PLANNER_SYSTEM_PROMPT.replace("{role}", role.upper())
+    messages = _build_messages(system_prompt, query, history)
+    
+    try:
+        # We use a JSON-ready client for planning
+        client = _get_openai_model().bind(response_format={"type": "json_object"})
+        response = client.invoke(messages)
+        content = response.content or "{}"
+        
+        # Clean markdown if present
+        if content.startswith("```"):
+            content = content.split("```json")[-1].split("```")[0].strip()
+            
+        data = json.loads(content)
+        return _validate_plan(data)
+    except Exception as e:
+        logger.error(f"Planning error: {e}")
+        return _fallback_plan(str(e))
+
+async def plan_query_async(query: str, role: str = "student", history: list[dict[str, str]] | None = None) -> dict[str, Any]:
+    """Asynchronous version of plan_query."""
+    system_prompt = PLANNER_SYSTEM_PROMPT.replace("{role}", role.upper())
+    messages = _build_messages(system_prompt, query, history)
+    
+    try:
+        client = _get_openai_model().bind(response_format={"type": "json_object"})
+        response = await client.ainvoke(messages)
+        content = response.content or "{}"
+        
+        if content.startswith("```"):
+            content = content.split("```json")[-1].split("```")[0].strip()
+            
+        data = json.loads(content)
+        return _validate_plan(data)
+    except Exception as e:
+        logger.error(f"Async planning error: {e}")
+        return _fallback_plan(str(e))
+
+def _validate_plan(data: dict) -> dict:
+    """Ensure the plan follows allowed fields and tools."""
     intent = str(data.get("intent", "unclear_query")).strip().lower()
     tool = data.get("tool")
-    answer = str(data.get("answer", "")).strip()
-    raw_student_fields = data.get("student_fields") or []
-
-    if intent not in {
-        "direct_response",
-        "student_data_query",
-        "document_query",
-        "unclear_query",
-    }:
-        intent = "unclear_query"
-
-    if tool not in {"get_student_data", "retrieve_documents"}:
+    
+    allowed_tools = {"get_student_profile", "search_department_documents", "update_student_data", "add_student", "remove_student", "list_students"}
+    if tool not in allowed_tools:
         tool = None
-
-    student_fields: list[str] = []
-    if isinstance(raw_student_fields, list):
-        for field in raw_student_fields:
-            field_name = str(field).strip().lower()
-            if field_name in ALLOWED_STUDENT_FIELDS and field_name not in student_fields:
-                student_fields.append(field_name)
-
-    if intent != "student_data_query":
-        student_fields = []
-    elif not student_fields:
-        student_fields = list(ALLOWED_STUDENT_FIELDS)
-
-    if not answer:
-        if intent == "direct_response":
-            answer = "Hello. Ask me about your academics or department documents."
-        elif intent == "unclear_query":
-            answer = (
-                "You can ask things like: 'Do I have backlogs?', "
-                "'What is my CGPA?', 'Am I placement ready?', or ask about a document."
-            )
-
+        
     return {
         "intent": intent,
         "tool": tool,
-        "student_fields": student_fields,
-        "answer": answer,
+        "student_fields": data.get("student_fields", []),
+        "action_payload": data.get("action_payload", {}),
+        "answer": data.get("answer", "I will help you with that.")
+    }
+
+def _fallback_plan(error_msg: str) -> dict:
+    return {
+        "intent": "unclear_query",
+        "tool": None,
+        "student_fields": [],
+        "action_payload": {},
+        "answer": f"I encountered a planning error: {error_msg}"
     }
 
 
-def generate_student_answer(query: str, student: dict[str, Any]) -> str:
-    return generate_student_answer_with_history(query, student, history=None)
+def build_student_answer_messages(query: str, student: dict[str, Any]) -> list:
+    return build_student_answer_messages_history(query, student, history=None)
 
 
-def generate_student_answer_with_history(
+def build_student_answer_messages_history(
     query: str,
     student: dict[str, Any],
     history: list[dict[str, str]] | None = None,
-) -> str:
+) -> list:
     student_json = json.dumps(student, ensure_ascii=True)
     user_prompt = (
         f"User question: {query}\n"
         f"Student record: {student_json}"
     )
-    messages = _build_messages(STUDENT_ANSWER_SYSTEM_PROMPT, user_prompt, history)
-    return _chat_text(messages)
+    return _build_messages(STUDENT_ANSWER_SYSTEM_PROMPT, user_prompt, history)
 
 
-def generate_document_answer(query: str, docs: list[dict[str, Any]]) -> str:
-    return generate_document_answer_with_history(query, docs, history=None)
+def build_document_answer_messages(query: str, docs: list[dict[str, Any]]) -> list:
+    return build_document_answer_messages_history(query, docs, history=None)
 
 
-def generate_document_answer_with_history(
+def build_document_answer_messages_history(
     query: str,
     docs: list[dict[str, Any]],
     history: list[dict[str, str]] | None = None,
-) -> str:
+) -> list:
     snippets = []
     for doc in docs[:3]:
         snippets.append(
@@ -195,6 +218,37 @@ def generate_document_answer_with_history(
         f"User question: {query}\n"
         f"Retrieved snippets: {json.dumps(snippets, ensure_ascii=True)}"
     )
-    messages = _build_messages(DOCUMENT_ANSWER_SYSTEM_PROMPT, user_prompt, history)
-    return _chat_text(messages)
+    return _build_messages(DOCUMENT_ANSWER_SYSTEM_PROMPT, user_prompt, history)
+
+
+def build_admin_answer_messages_history(
+    query: str,
+    admin_data: dict[str, Any],
+    history: list[dict[str, str]] | None = None,
+) -> list:
+    payload_json = json.dumps(admin_data, ensure_ascii=True)
+    user_prompt = f"User asked: {query}\nResult data: {payload_json}"
+    return _build_messages(ADMIN_ANSWER_SYSTEM_PROMPT, user_prompt, history)
+
+def build_faculty_answer_messages_history(
+    query: str,
+    faculty_data: dict[str, Any],
+    history: list[dict[str, str]] | None = None,
+) -> list:
+    payload_json = json.dumps(faculty_data, ensure_ascii=True)
+    user_prompt = f"User asked: {query}\nResult data: {payload_json}"
+    return _build_messages(FACULTY_ANSWER_SYSTEM_PROMPT, user_prompt, history)
+
+
+def build_general_answer_messages_history(
+    query: str,
+    role: str = "student",
+    history: list[dict[str, str]] | None = None,
+) -> list:
+    system_prompt = GENERAL_CONVERSATIONAL_PROMPT.replace("{role}", role.upper())
+    return _build_messages(system_prompt, query, history)
+
+def get_streaming_client():
+    return _get_client()
+
 

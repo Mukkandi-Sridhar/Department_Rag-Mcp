@@ -1,34 +1,33 @@
 import asyncio
 import time
 from typing import Any
+import json
+import re
+import re
 
 from fastapi import APIRouter, Header, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from backend.auth.firebase_auth import verify_firebase_token
-from backend.config import settings
-from backend.database.firestore import db_client
+from backend.core.config import settings
+from backend.database.neo4j_client import db_client
 from backend.orchestration import run_chat_graph
 from backend.llm.intent import normalize_query
 from backend.llm.responses import build_response
 
-
 router = APIRouter()
-
 
 class ChatHistoryItem(BaseModel):
     role: str
     content: str
 
-
 class ChatRequest(BaseModel):
     message: str
     history: list[ChatHistoryItem] = Field(default_factory=list)
 
-
 def _duration_ms(started_at: float) -> int:
     return int((time.perf_counter() - started_at) * 1000)
-
 
 def _base_log(
     *,
@@ -50,18 +49,45 @@ def _base_log(
         "error": response["error"],
     }
 
+def _mask_pii(text: str) -> str:
+    if not text:
+        return text
+    text = re.sub(r"\b\d\.\d\b", "[REDACTED_SCORE]", text)
+    text = re.sub(r"\d{10}", "[REDACTED_PHONE]", text)
+    return text
 
 def _safe_log(entry: dict[str, Any]) -> None:
+    """Saves chat history to Firestore in a single document per user."""
+    uid = entry.get("uid")
+    if not uid:
+        return
+
     try:
-        db_client.log_chat(entry)
-    except Exception:
-        # Logging must never break the user request.
-        pass
-
-
-def _is_google_api_error(exc: Exception) -> bool:
-    return exc.__class__.__module__.startswith("google.api_core")
-
+        from backend.core.firebase_app import get_firestore_client
+        from firebase_admin import firestore
+        
+        db = get_firestore_client()
+        # Document ID is the user's UID. Each message is appended to the 'messages' array.
+        doc_ref = db.collection("user_chats").document(uid)
+        
+        # We append: {timestamp, message, answer, intent, status}
+        chat_data = {
+            "timestamp": time.time(),
+            "query": entry.get("message"),
+            "answer": entry.get("answer"),
+            "intent": entry.get("intent"),
+            "tool_used": entry.get("tool_used"),
+            "status": entry.get("status")
+        }
+        
+        doc_ref.set({
+            "updated_at": time.time(),
+            "messages": firestore.ArrayUnion([chat_data])
+        }, merge=True)
+        
+    except Exception as e:
+        # Silently fail logging to avoid breaking user experience
+        print(f"FAILED TO SAVE TO FIRESTORE: {e}")
 
 def _finish(
     *,
@@ -97,12 +123,11 @@ def _finish(
     )
     return response
 
-
 @router.post("/chat")
 async def chat(
     request: ChatRequest,
     authorization: str | None = Header(default=None),
-) -> dict[str, Any]:
+) -> StreamingResponse:
     started_at = time.perf_counter()
     intent = "unknown"
     uid = None
@@ -120,7 +145,7 @@ async def chat(
     ]
 
     if not query:
-        return _finish(
+        payload = _finish(
             started_at=started_at,
             uid=uid,
             reg_no=reg_no,
@@ -129,6 +154,8 @@ async def chat(
             status="needs_clarification",
             answer="Please enter a valid question.",
         )
+        async def err_stream(): yield f"data: {json.dumps({'type': 'error', 'content': payload['answer']})}\n\n"
+        return StreamingResponse(err_stream(), media_type="text/event-stream")
 
     try:
         auth_user = verify_firebase_token(authorization)
@@ -140,7 +167,7 @@ async def chat(
         )
 
         if not profile:
-            return _finish(
+            payload = _finish(
                 started_at=started_at,
                 uid=uid,
                 reg_no=reg_no,
@@ -150,29 +177,14 @@ async def chat(
                 answer="Your user profile was not found. Please contact the department admin.",
                 error="profile_not_found",
             )
+            async def err_stream(): yield f"data: {json.dumps({'type': 'error', 'content': payload['answer']})}\n\n"
+            return StreamingResponse(err_stream(), media_type="text/event-stream")
 
         role = str(profile.get("role", "")).lower()
         reg_no = str(profile.get("reg_no", "")).strip().upper()
 
-        if role in {"faculty", "hod"}:
-            role_label = "HOD" if role == "hod" else "Faculty"
-            return _finish(
-                started_at=started_at,
-                uid=uid,
-                reg_no=None,
-                message=original_message,
-                intent=intent,
-                status="error",
-                answer=f"{role_label} login is recognized, but {role_label} chat tools are not enabled yet.",
-                data={
-                    "role": role,
-                    "faculty_id": str(profile.get("faculty_id", "")).strip(),
-                },
-                error="role_tools_not_enabled",
-            )
-
-        if role != "student":
-            return _finish(
+        if role not in {"student", "faculty", "hod"}:
+            payload = _finish(
                 started_at=started_at,
                 uid=uid,
                 reg_no=reg_no or None,
@@ -182,9 +194,11 @@ async def chat(
                 answer="This role is not supported in the current version.",
                 error="role_not_supported",
             )
+            async def err_stream(): yield f"data: {json.dumps({'type': 'error', 'content': payload['answer']})}\n\n"
+            return StreamingResponse(err_stream(), media_type="text/event-stream")
 
-        if not reg_no:
-            return _finish(
+        if role == "student" and not reg_no:
+            payload = _finish(
                 started_at=started_at,
                 uid=uid,
                 reg_no=None,
@@ -194,89 +208,93 @@ async def chat(
                 answer="Your student profile is not linked. Please contact the department admin.",
                 error="profile_not_linked",
             )
+            async def err_stream(): yield f"data: {json.dumps({'type': 'error', 'content': payload['answer']})}\n\n"
+            return StreamingResponse(err_stream(), media_type="text/event-stream")
 
-        graph_result = await asyncio.to_thread(
-            run_chat_graph,
-            original_message=original_message,
-            query=query,
-            history=history,
-            uid=uid,
-            reg_no=reg_no,
-            role=role,
-        )
-        intent = graph_result.get("intent", intent)
-        current_tool = graph_result.get("tool_used")
+        async def stream_generator():
+            # 1. HEARTBEAT
+            yield f"data: {json.dumps({'type': 'chunk', 'content': ''})}\n\n"
+            
+            nonlocal intent, current_tool
+            try:
+                graph_result = await run_chat_graph(
+                    original_message=original_message,
+                    query=query,
+                    history=history,
+                    uid=uid,
+                    reg_no=reg_no,
+                    role=role,
+                )
+            except Exception as ge:
+                yield f"data: {json.dumps({'type': 'error', 'content': f'Orchestration failed: {str(ge)}'})}\n\n"
+                return
 
-        if not graph_result.get("status") or not graph_result.get("answer"):
-            return _finish(
-                started_at=started_at,
-                uid=uid,
-                reg_no=reg_no,
-                message=original_message,
-                intent=intent,
-                status="error",
-                answer="I could not route that request.",
-                error="graph_incomplete",
+            intent = graph_result.get("intent", "unknown")
+            current_tool = graph_result.get("tool_used")
+
+            if graph_result.get("status") == "error":
+                payload = _finish(
+                    started_at=started_at, uid=uid, reg_no=reg_no, message=original_message,
+                    intent=intent, status="error", answer=graph_result.get("answer", "Error"),
+                    error=graph_result.get("error", "graph_error")
+                )
+                yield f"data: {json.dumps({'type': 'error', 'content': payload['answer']})}\n\n"
+                return
+
+            answer_prompt = graph_result.get("answer_prompt")
+            if not answer_prompt:
+                payload = _finish(
+                    started_at=started_at, uid=uid, reg_no=reg_no, message=original_message,
+                    intent=intent, status=graph_result.get("status", "error"), answer=graph_result.get("answer", "")
+                )
+                yield f"data: {json.dumps({'type': 'chunk', 'content': payload['answer']})}\n\n"
+                yield f"data: {json.dumps({'type': 'done', 'intent': intent})}\n\n"
+                return
+
+            from backend.llm.brain import get_streaming_client
+            client = get_streaming_client()
+            full_answer = ""
+            has_content = False
+            
+            try:
+                async for chunk in client.astream(answer_prompt):
+                    content = chunk.content if hasattr(chunk, 'content') else str(chunk)
+                    if content:
+                        has_content = True
+                        full_answer += content
+                        yield f"data: {json.dumps({'type': 'chunk', 'content': content})}\n\n"
+                
+                if not has_content:
+                    fallback = "I attempted to retrieve the records, but the database returned an empty result. Please try rephrasing."
+                    full_answer = fallback
+                    yield f"data: {json.dumps({'type': 'chunk', 'content': fallback})}\n\n"
+                    
+            except Exception as e:
+                yield f"data: {json.dumps({'type': 'error', 'content': f'Streaming failed: {str(e)}'})}\n\n"
+
+            _finish(
+                started_at=started_at, uid=uid, reg_no=reg_no, message=original_message,
+                intent=intent, status="answered", answer=full_answer, 
+                data=graph_result.get("data"), tool_used=current_tool
             )
+            yield f"data: {json.dumps({'type': 'done', 'intent': intent})}\n\n"
 
-        return _finish(
-            started_at=started_at,
-            uid=uid,
-            reg_no=reg_no,
-            message=original_message,
-            intent=intent,
-            status=graph_result["status"],
-            answer=graph_result["answer"],
-            data=graph_result.get("data"),
-            tool_used=current_tool,
-            error=graph_result.get("error"),
-        )
+        return StreamingResponse(stream_generator(), media_type="text/event-stream")
 
     except asyncio.TimeoutError:
-        return _finish(
-            started_at=started_at,
-            uid=uid,
-            reg_no=reg_no,
-            message=original_message,
-            intent=intent,
-            status="error",
-            answer="Request took too long. Please try again.",
-            tool_used=current_tool,
-            error="timeout",
+        payload = _finish(
+            started_at=started_at, uid=uid, reg_no=reg_no, message=original_message,
+            intent=intent, status="error", answer="Request took too long. Please try again.", error="timeout"
         )
-    except HTTPException as exc:
-        return _finish(
-            started_at=started_at,
-            uid=uid,
-            reg_no=reg_no,
-            message=original_message,
-            intent=intent,
-            status="error",
-            answer=str(exc.detail),
-            error="auth_error",
-        )
+        async def err_stream(): yield f"data: {json.dumps({'type': 'error', 'content': payload['answer']})}\n\n"
+        return StreamingResponse(err_stream(), media_type="text/event-stream")
     except Exception as exc:
-        if _is_google_api_error(exc):
-            return _finish(
-                started_at=started_at,
-                uid=uid,
-                reg_no=reg_no,
-                message=original_message,
-                intent=intent,
-                status="error",
-                answer="Student data is temporarily unavailable. Please try again later.",
-                tool_used=current_tool,
-                error="firestore_unavailable",
-            )
-
-        return _finish(
-            started_at=started_at,
-            uid=uid,
-            reg_no=reg_no,
-            message=original_message,
-            intent=intent,
-            status="error",
-            answer="I could not complete that request right now.",
-            tool_used=current_tool,
-            error="internal_error",
+        import traceback
+        logger_msg = traceback.format_exc()
+        print(f"Chat execution error: {logger_msg}")
+        payload = _finish(
+            started_at=started_at, uid=uid, reg_no=reg_no, message=original_message,
+            intent=intent, status="error", answer=f"Internal Server Error: {str(exc)}", error="internal_error"
         )
+        async def err_stream(): yield f"data: {json.dumps({'type': 'error', 'content': payload['answer']})}\n\n"
+        return StreamingResponse(err_stream(), media_type="text/event-stream")

@@ -2,8 +2,8 @@ from dataclasses import dataclass
 
 from fastapi import HTTPException, status
 
-from backend.config import settings
-from backend.firebase_app import initialize_firebase_app
+from backend.core.config import settings
+from backend.core.firebase_app import initialize_firebase_app
 
 
 @dataclass(frozen=True)

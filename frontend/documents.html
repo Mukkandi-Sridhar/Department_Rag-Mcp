@@ -3,87 +3,99 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Documents | Department AI</title>
-    <link rel="stylesheet" href="/frontend/styles.css" />
+    <title>Documents Hub | Department AI</title>
+    <link rel="stylesheet" href="/frontend/css/styles.css" />
+    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
   </head>
-  <body class="workspace-body">
+  <body>
     <div class="app-shell">
+      <!-- Sidebar -->
       <aside class="sidebar">
-        <a class="brand" href="/dashboard">
-          <span class="brand-mark">DA</span>
-          <div>
-            <strong>Department AI</strong>
-            <span>Academic workspace</span>
-          </div>
-        </a>
-
-        <div class="sidebar-copy">
-          <strong>Build the department knowledge base.</strong>
-          <span>Upload PDFs here so the assistant can retrieve document-based answers later.</span>
+        <div class="sidebar-header">
+          <a href="/dashboard" class="sidebar-brand">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>Dept AI</span>
+          </a>
         </div>
 
-        <nav class="sidebar-nav">
-          <a class="nav-link" href="/dashboard">Dashboard</a>
-          <a class="nav-link" href="/profile">Profile</a>
-          <a class="nav-link active" href="/documents">Documents</a>
-        </nav>
-
-        <div class="sidebar-card">
-          <strong>Document flow</strong>
-          <span>PDF upload and indexing live here instead of competing with the chat screen.</span>
+        <div class="sidebar-scroll-area">
+          <a class="nav-item" href="/dashboard">
+            <i class="fas fa-arrow-left"></i>
+            <span>Back to chat</span>
+          </a>
+          <div class="history-group">Manager</div>
+          <a class="nav-item" href="/profile">
+            <i class="far fa-user"></i>
+            <span>General</span>
+          </a>
+          <a class="nav-item active" href="/documents">
+            <i class="far fa-file-pdf"></i>
+            <span>Data & Files</span>
+          </a>
         </div>
-
-        <button type="button" class="secondary logout-button" id="logout-button">
-          Sign Out
-        </button>
       </aside>
 
-      <main class="workspace-main">
-        <header class="workspace-header">
-          <div>
-            <span class="eyebrow">Documents</span>
-            <h1>Upload departmental PDFs</h1>
-            <p>Keep document ingestion separate from the assistant so the workflow stays focused.</p>
+      <!-- Main Area -->
+      <main class="main-content" style="align-items: center; justify-content: flex-start; padding-top: var(--space-3xl);">
+        <div style="width: 100%; max-width: 600px; padding: 0 var(--space-lg);">
+          <h1 style="font-size: 20px; font-weight: 600; margin-bottom: var(--space-2xl);">Data Management</h1>
+          
+          <div style="border-top: 1px solid var(--border-divider); padding-top: var(--space-xl);">
+            <!-- Upload Section -->
+            <section style="margin-bottom: var(--space-3xl);">
+              <h2 style="font-size: 14px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; margin-bottom: var(--space-lg);">Knowledge Base</h2>
+              <p style="font-size: 14px; color: var(--text-secondary); margin-bottom: var(--space-xl);">Upload departmental PDFs to train the AI assistant. These files will be indexed and searchable.</p>
+              
+              <div style="background: var(--hover-surface); border: 1px dashed var(--border-divider); border-radius: var(--radius-lg); padding: var(--space-3xl); text-align: center;">
+                <form id="upload-form">
+                  <input id="pdf-file" type="file" accept=".pdf,application/pdf" style="display: none;" />
+                  <label for="pdf-file" class="primary-button" style="display: inline-flex; width: auto; padding: 0 var(--space-xl); cursor: pointer;">
+                    <i class="fas fa-plus" style="margin-right: 8px;"></i> Select PDF
+                  </label>
+                  <div id="file-name" style="margin-top: 12px; font-size: 12px; color: var(--text-secondary);">No file selected</div>
+                  <button type="submit" id="btn-upload" class="primary-button" style="margin-top: 24px; background: white; color: black; display: none;">Upload & Index</button>
+                </form>
+                <div id="upload-status" style="margin-top: 16px; font-size: 13px;"></div>
+              </div>
+            </section>
+
+            <!-- Usage section -->
+            <section style="border-top: 1px solid var(--border-divider); padding-top: var(--space-xl);">
+               <h2 style="font-size: 14px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; margin-bottom: var(--space-lg);">Data Controls</h2>
+               <div style="display: flex; align-items: center; justify-content: space-between; padding: var(--space-md) 0;">
+                  <div>
+                    <div style="font-size: 14px; font-weight: 500;">Export Data</div>
+                    <div style="font-size: 13px; color: var(--text-secondary);">Download your conversation history</div>
+                  </div>
+                  <button class="new-chat-btn" style="font-size: 12px; border: 1px solid var(--border-divider);">Export</button>
+               </div>
+               <div style="display: flex; align-items: center; justify-content: space-between; padding: var(--space-md) 0; border-top: 1px solid var(--border-divider);">
+                  <div>
+                    <div style="font-size: 14px; font-weight: 500; color: var(--error-text);">Delete Account</div>
+                    <div style="font-size: 13px; color: var(--text-secondary);">Permanently delete all your data</div>
+                  </div>
+                  <button class="new-chat-btn" style="font-size: 12px; border: 1px solid var(--error-text); color: var(--error-text);">Delete</button>
+               </div>
+            </section>
           </div>
-          <div class="workspace-user" id="workspace-user">Checking session...</div>
-        </header>
-
-        <section class="workspace-grid">
-          <article class="panel panel-xl">
-            <div class="panel-head">
-              <h2>Upload and index</h2>
-              <p>Select a PDF and add it to the searchable document collection.</p>
-            </div>
-            <form id="upload-form">
-              <label>
-                Department PDF
-                <input id="pdf-file" type="file" accept=".pdf,application/pdf" />
-              </label>
-              <button type="submit">Upload and Index</button>
-            </form>
-            <p class="status" id="upload-status"></p>
-          </article>
-
-          <article class="panel">
-            <div class="panel-head">
-              <h2>Notes</h2>
-              <p>Only authenticated users can upload files to the knowledge base.</p>
-            </div>
-            <div class="mini-stats">
-              <div>
-                <strong>Allowed format</strong>
-                <span>PDF</span>
-              </div>
-              <div>
-                <strong>Indexing</strong>
-                <span>Runs after upload</span>
-              </div>
-            </div>
-          </article>
-        </section>
+        </div>
       </main>
     </div>
 
-    <script type="module" src="/frontend/documents.js"></script>
+    <script type="module" src="/frontend/js/documents.js"></script>
+    <script type="module">
+       const input = document.getElementById('pdf-file');
+       const label = document.getElementById('file-name');
+       const btn = document.getElementById('btn-upload');
+       input?.addEventListener('change', (e) => {
+          if (e.target.files.length) {
+             label.textContent = e.target.files[0].name;
+             btn.style.display = 'inline-flex';
+          }
+       });
+    </script>
   </body>
 </html>
+

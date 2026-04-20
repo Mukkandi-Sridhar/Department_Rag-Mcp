@@ -16,15 +16,13 @@ function renderUserSummary(user) {
 
 
 function bindLogout() {
-  const logoutButton = document.querySelector("#logout-button");
-  if (!logoutButton) {
-    return;
-  }
-
-  logoutButton.addEventListener("click", async () => {
-    await signOut(auth);
-    setUser(null);
-    goTo(routes.login);
+  const buttons = document.querySelectorAll("#logout-button, #logout-button-sidebar, .logout-button-header");
+  buttons.forEach(button => {
+    button.addEventListener("click", async () => {
+      await signOut(auth);
+      setUser(null);
+      goTo(routes.login);
+    });
   });
 }
 

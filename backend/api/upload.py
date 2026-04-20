@@ -6,8 +6,10 @@ from typing import Any
 from fastapi import APIRouter, File, Header, HTTPException, UploadFile, status
 
 from backend.auth.firebase_auth import verify_firebase_token
-from backend.config import settings
+from backend.core.config import settings
 from backend.llm.responses import build_response
+from backend.core.audit import log_action
+
 
 
 router = APIRouter()
@@ -19,7 +21,15 @@ async def upload_pdf(
     authorization: str | None = Header(default=None),
 ) -> dict[str, Any]:
     started_at = time.perf_counter()
-    verify_firebase_token(authorization)
+    auth_user = verify_firebase_token(authorization)
+    role = auth_user.role_hint or "student"
+
+    if role not in {"faculty", "hod"}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to upload documents.",
+        )
+
 
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(
@@ -58,6 +68,7 @@ async def upload_pdf(
             duration_ms=int((time.perf_counter() - started_at) * 1000),
         )
 
+    log_action(auth_user.uid, role, "upload_document", file.filename, None, "success")
     return build_response(
         status="answered",
         intent="document_query",

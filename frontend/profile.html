@@ -3,64 +3,102 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Profile | Department AI</title>
-    <link rel="stylesheet" href="/frontend/styles.css" />
+    <title>Settings | Department AI</title>
+    <link rel="stylesheet" href="/frontend/css/styles.css" />
+    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
   </head>
-  <body class="workspace-body">
+  <body>
     <div class="app-shell">
+      <!-- Sidebar -->
       <aside class="sidebar">
-        <a class="brand" href="/dashboard">
-          <span class="brand-mark">DA</span>
-          <div>
-            <strong>Department AI</strong>
-            <span>Academic workspace</span>
-          </div>
-        </a>
-
-        <div class="sidebar-copy">
-          <strong>Account context stays visible.</strong>
-          <span>Check the identity and role linked to your current sign-in.</span>
+        <div class="sidebar-header">
+          <a href="/dashboard" class="sidebar-brand">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>Dept AI</span>
+          </a>
         </div>
 
-        <nav class="sidebar-nav">
-          <a class="nav-link" href="/dashboard">Dashboard</a>
-          <a class="nav-link active" href="/profile">Profile</a>
-          <a class="nav-link" href="/documents">Documents</a>
-        </nav>
-
-        <div class="sidebar-card">
-          <strong>Profile view</strong>
-          <span>Useful for checking role mappings, email, UID, and register number.</span>
+        <div class="sidebar-scroll-area">
+          <a class="nav-item" href="/dashboard">
+            <i class="fas fa-arrow-left"></i>
+            <span>Back to chat</span>
+          </a>
+          <div class="history-group">Settings</div>
+          <a class="nav-item active" href="/profile">
+            <i class="far fa-user"></i>
+            <span>General</span>
+          </a>
+          <a class="nav-item" href="/documents">
+            <i class="far fa-file-pdf"></i>
+            <span>Data & Files</span>
+          </a>
         </div>
-
-        <button type="button" class="secondary logout-button" id="logout-button">
-          Sign Out
-        </button>
       </aside>
 
-      <main class="workspace-main">
-        <header class="workspace-header">
-          <div>
-            <span class="eyebrow">Profile</span>
-            <h1>Your department account</h1>
-            <p>Review the identity details currently attached to your authenticated session.</p>
-          </div>
-          <div class="workspace-user" id="workspace-user">Checking session...</div>
-        </header>
+      <!-- Main Area -->
+      <main class="main-content" style="align-items: center; justify-content: flex-start; padding-top: var(--space-3xl);">
+        <div style="width: 100%; max-width: 600px; padding: 0 var(--space-lg);">
+          <h1 style="font-size: 20px; font-weight: 600; margin-bottom: var(--space-2xl);">Settings</h1>
+          
+          <div style="border-top: 1px solid var(--border-divider); padding-top: var(--space-xl);">
+            <!-- Profile Section -->
+            <section style="margin-bottom: var(--space-3xl);">
+              <h2 style="font-size: 14px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; margin-bottom: var(--space-lg);">Personal Info</h2>
+              
+              <div style="display: flex; align-items: center; justify-content: space-between; padding: var(--space-md) 0;">
+                <div>
+                   <div style="font-size: 14px; font-weight: 500;">Name</div>
+                   <div id="p-name" style="font-size: 14px; color: var(--text-secondary);">Loading...</div>
+                </div>
+                <button class="new-chat-btn" style="font-size: 12px; border: 1px solid var(--border-divider);">Edit</button>
+              </div>
 
-        <section class="workspace-grid single-column">
-          <article class="panel panel-xl">
-            <div class="panel-head">
-              <h2>Account details</h2>
-              <p>Review the role and profile information linked to your sign-in.</p>
-            </div>
-            <p class="status" id="profile-status"></p>
-            <div class="profile profile-card" id="profile-details"></div>
-          </article>
-        </section>
+              <div style="display: flex; align-items: center; justify-content: space-between; padding: var(--space-md) 0; border-top: 1px solid var(--border-divider);">
+                <div>
+                   <div style="font-size: 14px; font-weight: 500;">Email</div>
+                   <div id="p-email" style="font-size: 14px; color: var(--text-secondary);">Loading...</div>
+                </div>
+              </div>
+
+              <div style="display: flex; align-items: center; justify-content: space-between; padding: var(--space-md) 0; border-top: 1px solid var(--border-divider);">
+                <div>
+                   <div style="font-size: 14px; font-weight: 500;">Registration ID</div>
+                   <div id="p-reg" style="font-size: 14px; color: var(--text-secondary);">-</div>
+                </div>
+              </div>
+            </section>
+
+            <!-- Academic Overview -->
+            <section style="margin-bottom: var(--space-3xl); background: var(--hover-surface); padding: var(--space-xl); border-radius: var(--radius-lg);">
+              <h2 style="font-size: 14px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; margin-bottom: var(--space-lg);">Academic Snapshot</h2>
+              <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--space-md);">
+                 <div style="text-align: center;">
+                    <div id="p-cgpa" style="font-size: 24px; font-weight: 700; color: var(--brand-green);">0.00</div>
+                    <div style="font-size: 11px; text-transform: uppercase;">CGPA</div>
+                 </div>
+                 <div style="text-align: center;">
+                    <div id="p-backlogs" style="font-size: 24px; font-weight: 700; color: var(--error-text);">0</div>
+                    <div style="font-size: 11px; text-transform: uppercase;">Backlogs</div>
+                 </div>
+                 <div style="text-align: center;">
+                    <div id="p-placement" style="font-size: 14px; font-weight: 600; margin-top: 8px;">-</div>
+                    <div style="font-size: 11px; text-transform: uppercase;">Placement</div>
+                 </div>
+              </div>
+            </section>
+
+            <!-- Dangerous actions -->
+            <section>
+               <button id="logout-button-alt" class="primary-button" style="background: transparent; color: var(--error-text); border: 1px solid var(--error-text); margin-top: 0;">Log out of all sessions</button>
+            </section>
+          </div>
+        </div>
       </main>
     </div>
 
-    <script type="module" src="/frontend/profile.js"></script>
+    <script type="module" src="/frontend/js/profile.js"></script>
   </body>
 </html>
+

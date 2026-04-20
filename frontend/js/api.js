@@ -32,7 +32,7 @@ export async function fetchProfile() {
 }
 
 
-export async function sendChat(message, history = []) {
+export async function* sendChatStream(message, history = []) {
   const response = await fetch("/chat", {
     method: "POST",
     headers: {
@@ -41,7 +41,47 @@ export async function sendChat(message, history = []) {
     },
     body: JSON.stringify({ message, history }),
   });
-  return parseJsonResponse(response, "Could not send chat request.");
+  if (!response.ok) {
+     let text = await response.text();
+     try {
+       const obj = JSON.parse(text);
+       throw new Error(obj.answer || obj.detail || "Server error");
+     } catch (e) {
+       throw new Error("Server error: " + text);
+     }
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    
+    // Server-Sent Events structure: 'data: {...}\n\n'
+    const payloadSeparator = "\n\n";
+    let index;
+    
+    while ((index = buffer.indexOf(payloadSeparator)) !== -1) {
+      const chunk = buffer.slice(0, index);
+      buffer = buffer.slice(index + payloadSeparator.length);
+      
+      if (chunk.trim() !== "") {
+        if (chunk.startsWith("data: ")) {
+          try {
+            const dataStr = chunk.slice(6);
+            const parsed = JSON.parse(dataStr);
+            yield parsed;
+          } catch (e) {
+            console.error("Failed parsing SSE chunk", e, chunk);
+          }
+        }
+      }
+    }
+  }
 }
 
 

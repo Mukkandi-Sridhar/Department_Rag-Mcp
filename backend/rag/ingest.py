@@ -3,7 +3,7 @@ from typing import Any
 
 from pypdf import PdfReader
 
-from backend.config import settings
+from backend.core.config import settings
 from backend.rag.embeddings import get_embeddings
 
 

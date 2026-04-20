@@ -1,7 +1,7 @@
 import re
 from typing import Any
 
-from backend.config import settings
+from backend.core.config import settings
 from backend.rag.embeddings import get_embeddings
 from backend.rag.ingest import COLLECTION_NAME
 

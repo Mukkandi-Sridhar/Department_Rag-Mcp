@@ -4,69 +4,56 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Sign In | Department AI</title>
-    <link rel="stylesheet" href="/frontend/styles.css" />
+    <link rel="stylesheet" href="/frontend/css/styles.css" />
+    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
   </head>
   <body class="auth-page-body">
-    <main class="auth-layout">
-      <section class="auth-showcase">
-        <span class="eyebrow">Department AI</span>
-        <h1>Welcome back to your academic workspace.</h1>
-        <p>
-          Sign in with your department account to open your dashboard, review
-          your profile, ask academic questions, and manage departmental PDFs.
+    <main class="auth-card">
+      <div class="auth-logo">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      
+      <h1 class="auth-title">Welcome back</h1>
+      
+      <form id="login-form">
+        <div class="form-group">
+          <label for="email" style="font-size: 14px; font-weight: 500;">Email address</label>
+          <input
+            id="email"
+            type="email"
+            class="form-input"
+            placeholder="student.test@rgmcet.edu.in"
+            required
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="password" style="font-size: 14px; font-weight: 500;">Login code</label>
+          <input
+            id="password"
+            type="password"
+            class="form-input"
+            placeholder="e.g. MUKK2006"
+            required
+          />
+        </div>
+
+        <button type="submit" class="primary-button">Continue</button>
+      </form>
+
+      <p class="status" id="auth-status" style="margin-top: 16px; font-size: 14px; min-height: 20px;"></p>
+      
+      <div style="margin-top: 24px; border-top: 1px solid var(--border-divider); padding-top: 24px;">
+        <p style="font-size: 14px; color: var(--text-secondary);">
+          Don't have an account? Contact your department HOD.
         </p>
-        <div class="auth-highlights">
-          <div>
-            <strong>Profile</strong>
-            <span>Separate account details page</span>
-          </div>
-          <div>
-            <strong>Assistant</strong>
-            <span>Ask questions from the dashboard</span>
-          </div>
-          <div>
-            <strong>Documents</strong>
-            <span>Upload and index PDFs in one place</span>
-          </div>
-        </div>
-      </section>
-
-      <section class="auth-panel">
-        <div class="auth-panel-head">
-          <span class="eyebrow">Sign In</span>
-          <h2>Access your workspace</h2>
-          <p>Use your department email and login code.</p>
-        </div>
-
-        <form id="login-form" class="form-card">
-          <label>
-            Email
-            <input
-              id="email"
-              type="email"
-              placeholder="student.test@rgmcet.edu.in"
-              required
-            />
-          </label>
-
-          <label>
-            Password
-            <input
-              id="password"
-              type="password"
-              placeholder="Use your login code, for example MUKK2006"
-              required
-            />
-          </label>
-
-          <button type="submit">Sign In</button>
-        </form>
-
-        <p class="status" id="auth-status"></p>
-        <a class="text-link" href="/">Back to overview</a>
-      </section>
+      </div>
     </main>
 
-    <script type="module" src="/frontend/login.js"></script>
+    <script type="module" src="/frontend/js/login.js"></script>
   </body>
 </html>

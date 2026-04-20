@@ -22,6 +22,7 @@ class Settings:
 
     csv_path = Path(os.getenv("CSV_PATH", BASE_DIR / "students_data_new.csv"))
     local_log_path = Path(os.getenv("LOCAL_LOG_PATH", BASE_DIR / "logs" / "chat_logs.jsonl"))
+    admin_action_log_path = Path(os.getenv("ADMIN_ACTION_LOG_PATH", BASE_DIR / "logs" / "audit_log.jsonl"))
 
     chroma_dir = Path(os.getenv("CHROMA_DIR", BASE_DIR / "storage" / "chroma"))
     upload_dir = Path(os.getenv("UPLOAD_DIR", BASE_DIR / "storage" / "uploads"))
@@ -29,9 +30,21 @@ class Settings:
     student_tool_timeout_seconds = float(os.getenv("STUDENT_TOOL_TIMEOUT_SECONDS", "3"))
     rag_tool_timeout_seconds = float(os.getenv("RAG_TOOL_TIMEOUT_SECONDS", "8"))
 
+    FASTAPI_HOST: str = "0.0.0.0"
+    FASTAPI_PORT: int = 8000
+
+    # Neo4j Settings
+    NEO4J_URI = os.getenv("NEO4J_URI")
+    NEO4J_USERNAME = os.getenv("NEO4J_USERNAME")
+    NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
+
     openai_api_key = os.getenv("OPENAI_API_KEY", "")
     openai_embedding_model = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
     openai_chat_model = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini")
+    
+    # HOD and Faculty tools feature flags
+    enable_hod_tools = os.getenv("ENABLE_HOD_TOOLS", "true").lower() == "true"
+    enable_faculty_tools = os.getenv("ENABLE_FACULTY_TOOLS", "true").lower() == "true"
 
 
 settings = Settings()

@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from backend.config import settings
+from backend.core.config import settings
 
 
 def _resolve_service_account_path() -> Path:
