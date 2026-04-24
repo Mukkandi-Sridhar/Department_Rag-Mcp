@@ -8,6 +8,7 @@ import {
   getAuth,
   setPersistence,
 } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-auth.js";
+import { getFirestore } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-firestore.js";
 
 
 export const firebaseConfig = {
@@ -22,6 +23,7 @@ export const firebaseConfig = {
 
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
+export const db = getFirestore(app);
 export const authReady = setPersistence(auth, browserLocalPersistence).catch(() => null);
 
 export const analyticsPromise = isSupported().then((supported) => {

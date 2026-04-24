@@ -13,7 +13,7 @@ except ValueError:
     cred = credentials.Certificate(settings.firebase_service_account_path)
     firebase_admin.initialize_app(cred)
 
-PASSWORD = "samepassword"
+PASSWORD = "15082006"
 
 def create_user(email, password):
     try:
@@ -31,11 +31,8 @@ def create_user(email, password):
             print(f"Error creating {email}: {e}")
             return None
 
-print("Provisioning faculty...")
-create_user("faculty@department.edu", PASSWORD)
-
-print("Provisioning HOD...")
-create_user("hod@department.edu", PASSWORD)
+print("Provisioning unified faculty...")
+create_user("faculty@rgmcet.edu.in", "CSEAIML")
 
 print("\nProcessing students from CSV...")
 with open('students_data_new.csv', 'r', encoding='utf-8') as f:
@@ -43,7 +40,8 @@ with open('students_data_new.csv', 'r', encoding='utf-8') as f:
     for row in reader:
         reg_no = row.get("reg_no").strip()
         email = f"{reg_no}@rgmcet.edu.in".lower()
-        uid = create_user(email, PASSWORD)
+        password = reg_no.lower()
+        uid = create_user(email, password)
         
         # Link user in Neo4j!
         if uid:

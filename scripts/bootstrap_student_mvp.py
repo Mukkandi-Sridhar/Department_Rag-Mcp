@@ -12,11 +12,12 @@ load_dotenv(encoding="utf-8-sig")
 
 ROOT = Path(__file__).resolve().parent.parent
 API_URL = os.getenv("API_URL", "http://127.0.0.1:8000").rstrip("/")
-STUDENT_EMAIL = "student.test@rgmcet.edu.in"
+STUDENT_EMAIL = "23091a3349@rgmcet.edu.in"
 STUDENT_REG_NO = "23091A3349"
 STUDENT_NAME = "Mukkandi Sridhar"
 STUDENT_BIRTH_YEAR = "2006"
-STUDENT_LOGIN_CODE = "MUKK2006"
+STUDENT_DATE_OF_BIRTH = "15082006"
+STUDENT_LOGIN_CODE = "23091a3349"
 
 
 def _run_step(name: str, args: list[str], env: dict[str, str] | None = None) -> None:
@@ -100,6 +101,8 @@ def main() -> None:
             STUDENT_NAME,
             "--birth-year",
             STUDENT_BIRTH_YEAR,
+            "--date-of-birth",
+            STUDENT_DATE_OF_BIRTH,
         ],
     )
 

@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from backend.firebase_app import get_firestore_client, initialize_firebase_app
+from backend.core.firebase_app import get_firestore_client, initialize_firebase_app
 from scripts.set_user_mapping import build_mapping
 
 
@@ -61,46 +61,10 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _clean_name_parts(name: str) -> list[str]:
-    parts = re.findall(r"[A-Za-z]+", name)
-    return [
-        part
-        for part in parts
-        if part.lower() not in TITLE_WORDS and len(part) >= 2
-    ]
-
-
-def name_prefix(name: str) -> str:
-    parts = _clean_name_parts(name)
-    for part in parts:
-        if len(part) >= 4:
-            return part[:4].upper()
-
-    joined = "".join(parts)
-    if len(joined) >= 4:
-        return joined[:4].upper()
-
-    raise RuntimeError("Name must contain at least four letters to generate login code.")
-
-
-def resolve_birth_year(date_of_birth: str = "", birth_year: str = "") -> str:
-    if birth_year:
-        year = birth_year.strip()
-    else:
-        match = re.search(r"(19|20)\d{2}", date_of_birth or "")
-        year = match.group(0) if match else ""
-
-    if not re.fullmatch(r"(19|20)\d{2}", year):
-        raise RuntimeError(
-            "A valid birth year is required to generate login code. "
-            "Pass --birth-year 2006 or --date-of-birth 2006-04-15."
-        )
-
-    return year
-
-
 def generate_login_code(name: str, date_of_birth: str = "", birth_year: str = "") -> str:
-    return f"{name_prefix(name)}{resolve_birth_year(date_of_birth, birth_year)}"
+    if date_of_birth:
+        return date_of_birth.strip()
+    return "15082006"
 
 
 def load_profile_defaults(args: argparse.Namespace) -> dict:
@@ -119,25 +83,13 @@ def load_profile_defaults(args: argparse.Namespace) -> dict:
 
 def resolve_password_and_login_code(args: argparse.Namespace) -> tuple[str, str]:
     if args.password:
-        return args.password, ""
+        return args.password, args.password
 
-    needs_defaults = not args.name or not (args.date_of_birth or args.birth_year)
-    defaults = load_profile_defaults(args) if needs_defaults else {}
-    name = args.name or defaults.get("name", "")
-    date_of_birth = args.date_of_birth or defaults.get("date_of_birth", "")
-    birth_year = args.birth_year
-
-    try:
-        login_code = generate_login_code(name, date_of_birth, birth_year)
-    except RuntimeError as exc:
-        if args.role == "student":
-            raise RuntimeError(
-                f"{exc} Student records currently do not include date of birth, "
-                "so pass --birth-year or --date-of-birth for student users."
-            ) from exc
-        raise
-
-    return login_code, login_code
+    if args.role == "student" and args.reg_no:
+        pwd = args.reg_no.strip().lower()
+        return pwd, pwd
+        
+    return "CSEAIML", "CSEAIML"
 
 
 def get_or_create_user(email: str, password: str):

@@ -11,8 +11,7 @@ function setStatus(message, isError = false) {
   const status = document.querySelector("#auth-status");
   if (status) {
     status.textContent = message || "";
-    status.style.color = isError ? "var(--error)" : "var(--text-muted)";
-    status.style.fontWeight = isError ? "600" : "400";
+    status.className = "auth-status-badge" + (isError ? " error" : " success");
     status.style.display = message ? "block" : "none";
   }
 }
@@ -41,7 +40,12 @@ async function handleLogin(event) {
   setStatus("Verifying credentials...");
   if (submitButton) {
       submitButton.disabled = true;
-      submitButton.textContent = "Negotiating...";
+      const btnText = submitButton.querySelector(".btn-text");
+      const btnArrow = submitButton.querySelector(".btn-arrow");
+      const btnSpinner = submitButton.querySelector(".btn-spinner");
+      if (btnText) btnText.textContent = "Signing In";
+      if (btnArrow) btnArrow.style.display = "none";
+      if (btnSpinner) btnSpinner.style.display = "inline";
   }
 
   try {
@@ -68,8 +72,13 @@ async function handleLogin(event) {
 
     setStatus(friendlyMessage, true);
     if (submitButton) {
-        submitButton.disabled = false;
-        submitButton.textContent = "Sign In";
+      submitButton.disabled = false;
+      const btnText = submitButton.querySelector(".btn-text");
+      const btnArrow = submitButton.querySelector(".btn-arrow");
+      const btnSpinner = submitButton.querySelector(".btn-spinner");
+      if (btnText) btnText.textContent = "Sign In";
+      if (btnArrow) btnArrow.style.display = "inline";
+      if (btnSpinner) btnSpinner.style.display = "none";
     }
   }
 }

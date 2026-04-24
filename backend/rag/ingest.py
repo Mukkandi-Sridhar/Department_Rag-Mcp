@@ -43,10 +43,13 @@ def _chunk_text(text: str) -> list[str]:
     return chunks
 
 
-def ingest_pdf(file_path: str | Path) -> dict[str, Any]:
+def ingest_pdf(file_path: str | Path, visibility: str = "student") -> dict[str, Any]:
     path = Path(file_path)
     settings.chroma_dir.mkdir(parents=True, exist_ok=True)
     chromadb = _get_chromadb()
+    normalized_visibility = str(visibility or "student").strip().lower()
+    if normalized_visibility not in {"student", "faculty"}:
+        normalized_visibility = "student"
 
     reader = PdfReader(str(path))
     embeddings = get_embeddings()
@@ -66,6 +69,7 @@ def ingest_pdf(file_path: str | Path) -> dict[str, Any]:
                     "source": path.name,
                     "page": page_index + 1,
                     "chunk_index": chunk_index + 1,
+                    "visibility": normalized_visibility,
                 }
             )
 
@@ -93,4 +97,5 @@ def ingest_pdf(file_path: str | Path) -> dict[str, Any]:
         "file": path.name,
         "chunks": len(documents),
         "pages": len(reader.pages),
+        "visibility": normalized_visibility,
     }

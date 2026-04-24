@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from backend.firebase_app import get_firestore_client, validate_service_account_file
+from backend.core.firebase_app import get_firestore_client, validate_service_account_file
 
 
 def build_mapping(args: argparse.Namespace) -> dict:

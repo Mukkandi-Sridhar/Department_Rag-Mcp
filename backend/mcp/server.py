@@ -1,10 +1,8 @@
 import json
 import logging
-import os
 import asyncio
-from typing import Any
+from pathlib import Path
 
-import mcp.server.stdio
 from mcp.server import Server
 from mcp.types import (
     Resource,
@@ -18,8 +16,8 @@ from pydantic import AnyUrl
 from backend.database.neo4j_client import db_client
 from backend.rag.retrieve import retrieve_documents as retrieve_documents_from_rag
 from backend.database.validation import validate_student, validate_student_update
-from backend.core.audit import log_action
 from backend.core.config import settings
+from backend.core.policy import can_manage_documents, can_mutate_student_data, can_run_analytics, normalize_role
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -65,13 +63,22 @@ async def list_tools() -> list[Tool]:
     tools = [
         Tool(
             name="get_student_profile",
-            description="Retrieve the complete academic profile for a student by Registration Number.",
+            description="Retrieve the complete academic profile for a student. Accepts either a Registration Number (e.g. 23091A3349) or a student name (e.g. Sridhar). The system automatically determines which type of query it is.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "reg_no": {"type": "string", "description": "Student Registration Number, e.g., 21091A0501"}
+                    "query": {"type": "string", "description": "Registration Number OR student name. Examples: '23091A3349' or 'Sridhar' or 'Ammar'"}
                 },
-                "required": ["reg_no"]
+                "required": ["query"]
+            }
+        ),
+        Tool(
+            name="get_student_schema",
+            description="Get available Student properties and inferred types from Neo4j (dynamic schema).",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
             }
         ),
         Tool(
@@ -80,20 +87,10 @@ async def list_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "The natural language query to search for"}
+                    "query": {"type": "string", "description": "The natural language query to search for"},
+                    "role": {"type": "string", "description": "Caller role for visibility filtering: student|faculty|hod"}
                 },
                 "required": ["query"]
-            }
-        ),
-        Tool(
-            name="calculate_eligibility",
-            description="Calculate placement readiness and academic risk for a student.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "reg_no": {"type": "string", "description": "Student Registration Number"}
-                },
-                "required": ["reg_no"]
             }
         ),
         Tool(
@@ -103,6 +100,17 @@ async def list_tools() -> list[Tool]:
                 "type": "object",
                 "properties": {},
                 "required": []
+            }
+        ),
+        Tool(
+            name="delete_department_document",
+            description="Delete a document from uploads and vector index.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filename": {"type": "string", "description": "PDF filename to delete"}
+                },
+                "required": ["filename"]
             }
         )
     ]
@@ -151,6 +159,17 @@ async def list_tools() -> list[Tool]:
                     "properties": {},
                     "required": []
                 }
+            ),
+            Tool(
+                name="search_students",
+                description="Advanced search using Cypher query. Use for filters, counts, or comparisons. Schema: (s:Student {reg_no, name, email, gender, cgpa:Float, backlogs:Int, category, updated_at}).",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "cypher": {"type": "string", "description": "Read-only Cypher query. Example: MATCH (s:Student) WHERE s.backlogs > 2 RETURN s.name"}
+                    },
+                    "required": ["cypher"]
+                }
             )
         ])
         
@@ -161,124 +180,139 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[TextConten
     """Execute an academic tool (MCP entry point)."""
     return await process_tool_call(name, arguments or {})
 
-async def process_tool_call(name: str, arguments: dict) -> list[TextContent | ImageContent | EmbeddedResource]:
+async def process_tool_call(
+    name: str,
+    arguments: dict,
+    *,
+    actor_uid: str = "internal",
+    actor_role: str = "system",
+) -> list[TextContent | ImageContent | EmbeddedResource]:
     """Internal logic for executing tools, shared by MCP and Graph."""
-    actor_uid = arguments.get("_actor_uid", "internal")
-    # Pass caller_uid and role from kwargs? wait, MCP tools don't receive auth tokens.
-    # In this app, MCP tools are called INTERNALLY by the graph using an internal event loop or client.
-    # We will assume they are safe because the graph handles RBAC.
-    # We use a dummy actor for internal tool calls since the graph logs to Chat logs anyway.
-    actor_uid = arguments.get("_actor_uid", "internal")
-    role = arguments.get("_role", "system")
-    
-    # Strip internal args
-    if "_actor_uid" in arguments: del arguments["_actor_uid"]
-    if "_role" in arguments: del arguments["_role"]
-    
-    if name == "get_student_profile":
-        reg_no = arguments.get("reg_no", "").strip().upper()
-        if not reg_no:
-            return [TextContent(type="text", text="Error: Registration number required.")]
-        
-        data = await asyncio.to_thread(db_client.get_student_data, reg_no)
-        if not data:
-            return [TextContent(type="text", text=f"No student found with Registration Number: {reg_no}")]
-        
-        return [TextContent(type="text", text=json.dumps(data, indent=2))]
+    try:
+        arguments = dict(arguments or {})
+        arguments.pop("_actor_uid", None)
+        arguments.pop("_role", None)
+        role = normalize_role(actor_role, default="system")
 
-    elif name == "search_department_documents":
-        query = arguments.get("query", "")
-        if not query:
-            return [TextContent(type="text", text="Error: Query required.")]
-        
-        docs = retrieve_documents_from_rag(query)
-        if not docs:
-            return [TextContent(type="text", text="No relevant documents found for that query.")]
-        
-        results = []
-        for i, doc in enumerate(docs):
-            source = doc.get("source", {})
-            results.append(f"Source {i+1} ({source.get('document', 'Unknown')}): {doc.get('text')}")
-        
-        return [TextContent(type="text", text="\n\n".join(results))]
+        def _forbidden(message: str = "Permission denied for this tool.") -> list[TextContent]:
+            return [TextContent(type="text", text=message)]
 
-    elif name == "calculate_eligibility":
-        reg_no = arguments.get("reg_no", "").strip().upper()
-        raw_data = await asyncio.to_thread(db_client.get_student_data, reg_no)
-        if not raw_data:
-            return [TextContent(type="text", text="Student not found.")]
+        def _require_policy(check: bool) -> list[TextContent] | None:
+            if not check:
+                return _forbidden()
+            return None
         
-        data = validate_student(raw_data)
-        cgpa = float(data.get("cgpa", 0))
-        backlogs = int(data.get("backlogs", 0))
-        placement = str(data.get("placement", "no")).lower()
+        if name == "get_student_profile":
+            query = arguments.get("query", "").strip()
+            if not query:
+                return [TextContent(type="text", text="Error: Query required.")]
 
-        is_eligible = cgpa >= 7.0 and backlogs == 0
-        risk = "High" if backlogs > 0 or cgpa < 6.0 else "Low"
+            results = await asyncio.to_thread(db_client.find_student_by_query, query)
+            if not results:
+                return [TextContent(type="text", text=f"No student found matching: {query}")]
 
-        report = {
-            "status": "Targeting Placement" if is_eligible else "Needs Improvement",
-            "cgpa": cgpa,
-            "backlogs": backlogs,
-            "can_apply_for_placement": is_eligible,
-            "current_placement_status": placement,
-            "risk_level": risk,
-            "recommendation": "Focus on clearing backlogs" if backlogs > 0 else "Focus on improving CGPA" if cgpa < 7.0 else "Ready for interviews"
-        }
-        
-        return [TextContent(type="text", text=json.dumps(report, indent=2))]
+            if len(results) == 1:
+                return [TextContent(type="text", text=json.dumps(results[0], indent=2))]
+            else:
+                summary = [f"{r.get('reg_no', '?')} — {r.get('name', 'Unknown')}" for r in results]
+                return [TextContent(
+                    type="text",
+                    text=f"Multiple matches found:\n" + "\n".join(summary) + "\n\nPlease specify Registration Number."
+                )]
 
-    elif name == "list_department_documents":
-        upload_dir = settings.upload_dir
-        if not upload_dir.exists():
-            return [TextContent(type="text", text="[]")]
-        docs = []
-        for f in upload_dir.glob("*.pdf"):
-            docs.append(f.name)
-        return [TextContent(type="text", text=json.dumps(docs, indent=2))]
+        elif name == "get_student_schema":
+            denied = _require_policy(can_run_analytics(role))
+            if denied:
+                return denied
+            schema = await asyncio.to_thread(db_client.get_student_schema)
+            return [TextContent(type="text", text=json.dumps(schema, indent=2))]
 
-    elif name == "update_student_data":
-        reg_no = arguments.get("reg_no", "").strip().upper()
-        fields = arguments.get("fields", {})
-        valid_fields = validate_student_update(fields)
-        if not valid_fields:
-            return [TextContent(type="text", text="No valid fields provided to update.")]
+        elif name == "search_department_documents":
+            query = arguments.get("query", "")
+            role = arguments.get("role", "student")
+            if not query:
+                return [TextContent(type="text", text="Error: Query required.")]
             
-        success = await asyncio.to_thread(db_client.update_student_data, reg_no, valid_fields)
-        
-        log_action(actor_uid, role, "update_student", reg_no, valid_fields, "success" if success else "failed")
+            docs = retrieve_documents_from_rag(query, role=role)
+            if not docs:
+                return [TextContent(type="text", text="No relevant documents found.")]
             
-        if not success:
-            return [TextContent(type="text", text=f"Update failed. Student {reg_no} might not exist.")]
-        return [TextContent(type="text", text=f"Successfully updated student {reg_no} with fields: {list(valid_fields.keys())}")]
+            results = [f"Source {i+1}: {doc.get('text')}" for i, doc in enumerate(docs[:3])]
+            return [TextContent(type="text", text="\n\n".join(results))]
 
-    elif name == "add_student":
-        data = arguments.get("data", {})
-        validated = validate_student(data)
-        reg_no = validated.get("reg_no")
-        if not reg_no:
-            return [TextContent(type="text", text="Error: valid 'reg_no' required in data.")]
+        elif name == "list_department_documents":
+            docs = [f.name for f in settings.upload_dir.glob("*.pdf")]
+            return [TextContent(type="text", text=json.dumps(docs, indent=2))]
+
+        elif name == "delete_department_document":
+            denied = _require_policy(can_manage_documents(role))
+            if denied:
+                return denied
+            filename = str(arguments.get("filename", "")).strip()
+            if not filename: return [TextContent(type="text", text="Error: filename required.")]
+            file_path = settings.upload_dir / Path(filename).name
+            if file_path.exists(): file_path.unlink()
+            return [TextContent(type="text", text=f"Deleted {filename}")]
+
+        elif name == "update_student_data":
+            denied = _require_policy(can_mutate_student_data(role))
+            if denied:
+                return denied
+            reg_no = arguments.get("reg_no", "").strip().upper()
+            fields = validate_student_update(arguments.get("fields", {}))
+            success = await asyncio.to_thread(db_client.update_student_data, reg_no, fields)
+            return [TextContent(type="text", text="Success" if success else "Failed")]
+
+        elif name == "add_student":
+            denied = _require_policy(can_mutate_student_data(role))
+            if denied:
+                return denied
+            success = await asyncio.to_thread(db_client.add_student, validate_student(arguments.get("data", {})))
+            return [TextContent(type="text", text="Success" if success else "Failed")]
+
+        elif name == "remove_student":
+            denied = _require_policy(can_mutate_student_data(role))
+            if denied:
+                return denied
+            reg_no = arguments.get("reg_no", "").strip().upper()
+            success = await asyncio.to_thread(db_client.remove_student, reg_no)
+            return [TextContent(type="text", text="Success" if success else "Failed")]
+
+        elif name == "list_students":
+            denied = _require_policy(can_run_analytics(role))
+            if denied:
+                return denied
+            students = await asyncio.to_thread(db_client.list_all_students)
+            return [TextContent(type="text", text=json.dumps(students, indent=2))]
+
+        elif name == "search_students":
+            denied = _require_policy(can_run_analytics(role))
+            if denied:
+                return denied
+            cypher = arguments.get("cypher", "").strip()
+            if not cypher:
+                return [TextContent(type="text", text="Error: Cypher query required.")]
             
-        success = await asyncio.to_thread(db_client.add_student, validated)
-        
-        log_action(actor_uid, role, "add_student", reg_no, validated, "success" if success else "failed")
+            # Execute with query retry logic (max 1 retry)
+            result = await asyncio.to_thread(db_client.query_students, cypher)
             
-        if not success:
-            return [TextContent(type="text", text=f"Failed to add student. {reg_no} might already exist.")]
-        return [TextContent(type="text", text=f"Successfully added student {reg_no}.")]
+            if result.get("error") and result.get("suggestion") == "retry":
+                return [TextContent(
+                    type="text", 
+                    text=f"Cypher Error: {result['error']}\nSuggestion: Correct the syntax and try once more."
+                )]
+            
+            if result.get("error"):
+                return [TextContent(type="text", text=f"Search Failed: {result['error']}")]
+            
+            data = result.get("data", [])
+            if not data:
+                return [TextContent(type="text", text="No records matched the criteria.")]
+                
+            return [TextContent(type="text", text=json.dumps(data, indent=2))]
 
-    elif name == "remove_student":
-        reg_no = arguments.get("reg_no", "").strip().upper()
-        success = await asyncio.to_thread(db_client.remove_student, reg_no)
-        
-        log_action(actor_uid, role, "remove_student", reg_no, None, "success" if success else "failed")
-        
-        if not success:
-            return [TextContent(type="text", text=f"Failed to remove student {reg_no}.")]
-        return [TextContent(type="text", text=f"Successfully removed student {reg_no}.")]
+        raise ValueError(f"Unknown tool: {name}")
 
-    elif name == "list_students":
-        students = await asyncio.to_thread(db_client.list_all_students)
-        return [TextContent(type="text", text=json.dumps(students, indent=2))]
-
-    raise ValueError(f"Unknown tool: {name}")
+    except Exception as e:
+        logger.error(f"Tool {name} execution failed: {e}")
+        return [TextContent(type="text", text=f"Error: {str(e)}")]

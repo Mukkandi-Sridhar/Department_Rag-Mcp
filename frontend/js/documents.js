@@ -1,5 +1,8 @@
-import { uploadPdf } from "./api.js";
+import { uploadPdf, deleteDocument, fetchProfile } from "./api.js";
 import { requireAuth } from "./shell.js";
+
+const STUDENT_BLOCK_MESSAGE = "Only faculty or HOD accounts can upload or change department documents.";
+let currentRole = "student";
 
 function setText(selector, value) {
   const element = document.querySelector(selector);
@@ -8,10 +11,21 @@ function setText(selector, value) {
   }
 }
 
+function isStudentRole() {
+  return String(currentRole || "").toLowerCase() === "student";
+}
+
 async function handleUpload(event) {
   event.preventDefault();
+  if (isStudentRole()) {
+    setText("#upload-status", STUDENT_BLOCK_MESSAGE);
+    return;
+  }
+
   const fileInput = document.querySelector("#pdf-file");
+  const visibilityInput = document.querySelector("#visibility");
   const file = fileInput?.files?.[0];
+  const visibility = visibilityInput?.value || "student";
 
   if (!file) {
     setText("#upload-status", "Please select a PDF file.");
@@ -23,17 +37,36 @@ async function handleUpload(event) {
   if (btn) btn.disabled = true;
 
   try {
-    const body = await uploadPdf(file);
+    const body = await uploadPdf(file, visibility);
     setText("#upload-status", body.answer || "Document successfully indexed!");
     
     // Reset UI
     if (fileInput) fileInput.value = "";
-    setText("#file-name", "No file selected");
-    if (btn) btn.style.display = "none";
   } catch (error) {
     setText("#upload-status", error.message || "Upload failed. Please try again.");
   } finally {
     if (btn) btn.disabled = false;
+  }
+}
+
+async function handleDelete(event) {
+  event.preventDefault();
+  if (isStudentRole()) {
+    setText("#delete-status", STUDENT_BLOCK_MESSAGE);
+    return;
+  }
+
+  const filename = (document.querySelector("#delete-file-name")?.value || "").trim();
+  if (!filename) {
+    setText("#delete-status", "Enter a file name like policy.pdf.");
+    return;
+  }
+
+  try {
+    const body = await deleteDocument(filename);
+    setText("#delete-status", body.answer || "Document deleted.");
+  } catch (error) {
+    setText("#delete-status", error.message || "Delete failed. Please try again.");
   }
 }
 
@@ -42,10 +75,25 @@ async function initDocuments() {
   if (form) {
     form.addEventListener("submit", handleUpload);
   }
+  const deleteBtn = document.querySelector("#btn-delete-doc");
+  if (deleteBtn) {
+    deleteBtn.addEventListener("click", handleDelete);
+  }
 
   await requireAuth({
-    onReady(user) {
-      // Logic for session display if needed
+    async onReady() {
+      try {
+        const body = await fetchProfile();
+        currentRole = (body.data?.role || "student").toLowerCase();
+      } catch {
+        currentRole = "student";
+      }
+
+      if (isStudentRole()) {
+        setText("#upload-status", STUDENT_BLOCK_MESSAGE);
+      } else {
+        setText("#upload-status", "");
+      }
     },
   });
 }

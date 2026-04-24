@@ -1,101 +1,94 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Documents Hub | Department AI</title>
-    <link rel="stylesheet" href="/frontend/css/styles.css" />
-    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
-  </head>
-  <body>
-    <div class="app-shell">
-      <!-- Sidebar -->
-      <aside class="sidebar">
-        <div class="sidebar-header">
-          <a href="/dashboard" class="sidebar-brand">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            <span>Dept AI</span>
-          </a>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Documents Hub | Department AI</title>
+  <link rel="stylesheet" href="/frontend/css/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-brand-section">
+        <img src="/frontend/assets/department_logo.png" alt="Dept Logo" class="sidebar-logo logo">
+        <div class="brand-text-stack">
+          <span class="brand-main">Department AI</span>
+          <span class="brand-sub">CSE AI & ML RGMCET</span>
         </div>
+      </div>
 
-        <div class="sidebar-scroll-area">
-          <a class="nav-item" href="/dashboard">
-            <i class="fas fa-arrow-left"></i>
-            <span>Back to chat</span>
-          </a>
-          <div class="history-group">Manager</div>
-          <a class="nav-item" href="/profile">
-            <i class="far fa-user"></i>
-            <span>General</span>
-          </a>
-          <a class="nav-item active" href="/documents">
-            <i class="far fa-file-pdf"></i>
-            <span>Data & Files</span>
-          </a>
+      <a href="/dashboard" class="sidebar-nav-item">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        <span>Back to Chat</span>
+      </a>
+
+      <div class="sidebar-scroll-area">
+        <div class="sidebar-nav-item active">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+          <span>Documents Hub</span>
         </div>
-      </aside>
+        <a href="/profile" class="sidebar-nav-item">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+            <span>Settings</span>
+        </a>
+      </div>
+    </aside>
 
-      <!-- Main Area -->
-      <main class="main-content" style="align-items: center; justify-content: flex-start; padding-top: var(--space-3xl);">
-        <div style="width: 100%; max-width: 600px; padding: 0 var(--space-lg);">
-          <h1 style="font-size: 20px; font-weight: 600; margin-bottom: var(--space-2xl);">Data Management</h1>
+    <!-- Main View -->
+    <main class="main-view" style="overflow-y: auto;">
+      <div style="max-width: 800px; margin: 40px auto; padding: 0 24px;">
+        <h1 style="font-size: 24px; font-weight: 600; margin-bottom: 8px;">Documents Hub</h1>
+        <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: 32px;">Departmental records and knowledge base for RAG indexing.</p>
+
+        <!-- Upload Card -->
+        <div style="background: var(--bg-sidebar); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 24px; margin-bottom: 40px;">
+          <h2 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Update Knowledge Base</h2>
+          <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 24px;">Upload PDFs to train the Department AI. Faculty and HOD roles only.</p>
           
-          <div style="border-top: 1px solid var(--border-divider); padding-top: var(--space-xl);">
-            <!-- Upload Section -->
-            <section style="margin-bottom: var(--space-3xl);">
-              <h2 style="font-size: 14px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; margin-bottom: var(--space-lg);">Knowledge Base</h2>
-              <p style="font-size: 14px; color: var(--text-secondary); margin-bottom: var(--space-xl);">Upload departmental PDFs to train the AI assistant. These files will be indexed and searchable.</p>
-              
-              <div style="background: var(--hover-surface); border: 1px dashed var(--border-divider); border-radius: var(--radius-lg); padding: var(--space-3xl); text-align: center;">
-                <form id="upload-form">
-                  <input id="pdf-file" type="file" accept=".pdf,application/pdf" style="display: none;" />
-                  <label for="pdf-file" class="primary-button" style="display: inline-flex; width: auto; padding: 0 var(--space-xl); cursor: pointer;">
-                    <i class="fas fa-plus" style="margin-right: 8px;"></i> Select PDF
-                  </label>
-                  <div id="file-name" style="margin-top: 12px; font-size: 12px; color: var(--text-secondary);">No file selected</div>
-                  <button type="submit" id="btn-upload" class="primary-button" style="margin-top: 24px; background: white; color: black; display: none;">Upload & Index</button>
-                </form>
-                <div id="upload-status" style="margin-top: 16px; font-size: 13px;"></div>
-              </div>
-            </section>
-
-            <!-- Usage section -->
-            <section style="border-top: 1px solid var(--border-divider); padding-top: var(--space-xl);">
-               <h2 style="font-size: 14px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; margin-bottom: var(--space-lg);">Data Controls</h2>
-               <div style="display: flex; align-items: center; justify-content: space-between; padding: var(--space-md) 0;">
-                  <div>
-                    <div style="font-size: 14px; font-weight: 500;">Export Data</div>
-                    <div style="font-size: 13px; color: var(--text-secondary);">Download your conversation history</div>
-                  </div>
-                  <button class="new-chat-btn" style="font-size: 12px; border: 1px solid var(--border-divider);">Export</button>
-               </div>
-               <div style="display: flex; align-items: center; justify-content: space-between; padding: var(--space-md) 0; border-top: 1px solid var(--border-divider);">
-                  <div>
-                    <div style="font-size: 14px; font-weight: 500; color: var(--error-text);">Delete Account</div>
-                    <div style="font-size: 13px; color: var(--text-secondary);">Permanently delete all your data</div>
-                  </div>
-                  <button class="new-chat-btn" style="font-size: 12px; border: 1px solid var(--error-text); color: var(--error-text);">Delete</button>
-               </div>
-            </section>
-          </div>
+          <form id="upload-form" style="display: flex; flex-direction: column; gap: 16px;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <input id="pdf-file" type="file" accept=".pdf" style="font-size: 13px; border: 1px solid var(--border-subtle); padding: 8px; border-radius: 8px; flex: 1;" />
+                <select id="visibility" style="background: var(--bg-composer); color: white; border: 1px solid var(--border-subtle); padding: 9px; border-radius: 8px; font-size: 13px;">
+                    <option value="student">Visible to Students</option>
+                    <option value="faculty">Faculty Only</option>
+                </select>
+            </div>
+            <button type="submit" id="btn-upload" class="login-submit-btn" style="margin-top: 0; width: fit-content; padding: 10px 24px;">Upload & Index</button>
+          </form>
+          <div id="upload-status" style="margin-top: 16px; font-size: 13px;"></div>
         </div>
-      </main>
-    </div>
 
-    <script type="module" src="/frontend/js/documents.js"></script>
-    <script type="module">
-       const input = document.getElementById('pdf-file');
-       const label = document.getElementById('file-name');
-       const btn = document.getElementById('btn-upload');
-       input?.addEventListener('change', (e) => {
-          if (e.target.files.length) {
-             label.textContent = e.target.files[0].name;
-             btn.style.display = 'inline-flex';
-          }
-       });
-    </script>
-  </body>
+        <h3 style="font-size: 14px; font-weight: 600; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 16px;">Active Documents</h3>
+        <table class="docs-table">
+            <thead>
+                <tr>
+                    <th>Filename</th>
+                    <th>Visibility</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="docs-list">
+                <!-- Sample Row -->
+                <tr>
+                    <td style="color: var(--text-secondary);">Enter filename below to delete</td>
+                    <td>-</td>
+                    <td>-</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <!-- Delete Mini-section -->
+        <div style="margin-top: 32px; border-top: 1px solid var(--border-subtle); padding-top: 24px; display: flex; align-items: center; gap: 12px;">
+            <input id="delete-file-name" type="text" placeholder="filename_to_remove.pdf" class="login-field" style="max-width: 300px; font-size: 14px;" />
+            <button id="btn-delete-doc" style="background: transparent; color: #ef4444; border: 1px solid #ef4444; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px;">Delete File</button>
+        </div>
+        <div id="delete-status" style="margin-top: 12px; font-size: 13px;"></div>
+
+      </div>
+    </main>
+  </div>
+
+  <script type="module" src="/frontend/js/documents.js"></script>
+</body>
 </html>
-

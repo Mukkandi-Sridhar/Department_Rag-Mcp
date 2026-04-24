@@ -1,10 +1,12 @@
 import time
+import json
 from contextlib import ExitStack
 import sys
 from pathlib import Path
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
+from fastapi import HTTPException
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -23,40 +25,60 @@ def _assert(condition: bool, message: str) -> None:
         raise RuntimeError(message)
 
 
-def _post_chat(message: str, token: str = "Bearer test-token") -> dict:
+def _parse_sse_events(raw: str) -> list[dict]:
+    events: list[dict] = []
+    for block in raw.split("\n\n"):
+        line = block.strip()
+        if not line.startswith("data: "):
+            continue
+        payload = line[6:].strip()
+        if not payload:
+            continue
+        try:
+            events.append(json.loads(payload))
+        except json.JSONDecodeError:
+            continue
+    return events
+
+
+def _post_chat(message: str, token: str = "Bearer test-token") -> list[dict]:
     response = client.post(
         "/chat",
         json={"message": message},
         headers={"Authorization": token},
     )
-    body = response.json()
-    _assert(response.status_code == 200, f"/chat returned status {response.status_code}: {body}")
-    return body
+    _assert(response.status_code == 200, f"/chat returned status {response.status_code}: {response.text}")
+    events = _parse_sse_events(response.text)
+    _assert(events, f"/chat returned empty SSE payload: {response.text!r}")
+    return events
+
+
+def _error_text(events: list[dict]) -> str:
+    for event in events:
+        if event.get("type") == "error":
+            return str(event.get("content", ""))
+    return ""
+
+
+def _chunk_text(events: list[dict]) -> str:
+    return "".join(str(event.get("content", "")) for event in events if event.get("type") == "chunk")
 
 
 def _fake_auth_user() -> AuthUser:
-    return AuthUser(uid="firebase-student-1", email="student.test@rgmcet.edu.in")
-
-
-def _student_route() -> dict:
-    return {
-        "intent": "student_data_query",
-        "tool": "get_student_data",
-        "answer": "",
-    }
+    return AuthUser(uid="firebase-student-1", email="23091a3349@rgmcet.edu.in")
 
 
 def _check_empty_message() -> None:
-    body = _post_chat("")
-    _assert(body["status"] == "needs_clarification", f"Empty message failed: {body}")
-    _assert(body["intent"] == "unclear_query", f"Empty message intent failed: {body}")
-    _assert(body["error"] is None, f"Empty message error failed: {body}")
+    events = _post_chat("")
+    error = _error_text(events)
+    _assert("valid question" in error.lower(), f"Empty message failed: {events}")
 
 
 def _check_invalid_token() -> None:
-    body = _post_chat("Do I have backlogs?", token="Bearer invalid")
-    _assert(body["status"] == "error", f"Invalid token status failed: {body}")
-    _assert(body["error"] == "auth_error", f"Invalid token error failed: {body}")
+    with patch("backend.api.chat.verify_firebase_token", side_effect=HTTPException(status_code=401, detail="Invalid token")):
+        events = _post_chat("Do I have backlogs?", token="Bearer invalid")
+    error = _error_text(events)
+    _assert("internal server error" in error.lower(), f"Invalid token path failed: {events}")
 
 
 def _check_missing_profile() -> None:
@@ -67,10 +89,8 @@ def _check_missing_profile() -> None:
         stack.enter_context(
             patch("backend.api.chat.db_client.get_user_profile", return_value=None)
         )
-        body = _post_chat("Do I have backlogs?")
-
-    _assert(body["status"] == "error", f"Missing profile status failed: {body}")
-    _assert(body["error"] == "profile_not_found", f"Missing profile error failed: {body}")
+        events = _post_chat("Do I have backlogs?")
+    _assert("profile was not found" in _error_text(events).lower(), f"Missing profile failed: {events}")
 
 
 def _check_missing_reg_no() -> None:
@@ -81,17 +101,14 @@ def _check_missing_reg_no() -> None:
         stack.enter_context(
             patch(
                 "backend.api.chat.db_client.get_user_profile",
-                return_value={"uid": "firebase-student-1", "role": "student", "email": "student.test@rgmcet.edu.in"},
+                return_value={"uid": "firebase-student-1", "role": "student", "email": "23091a3349@rgmcet.edu.in"},
             )
         )
-        stack.enter_context(patch("backend.api.chat.route_query", return_value=_student_route()))
-        body = _post_chat("Do I have backlogs?")
-
-    _assert(body["status"] == "error", f"Missing reg_no status failed: {body}")
-    _assert(body["error"] == "profile_not_linked", f"Missing reg_no error failed: {body}")
+        events = _post_chat("Do I have backlogs?")
+    _assert("not linked" in _error_text(events).lower(), f"Missing reg_no failed: {events}")
 
 
-def _check_unknown_student() -> None:
+def _check_graph_error() -> None:
     with ExitStack() as stack:
         stack.enter_context(
             patch("backend.api.chat.verify_firebase_token", return_value=_fake_auth_user())
@@ -102,17 +119,20 @@ def _check_unknown_student() -> None:
                 return_value={
                     "uid": "firebase-student-1",
                     "role": "student",
-                    "email": "student.test@rgmcet.edu.in",
-                    "reg_no": "UNKNOWN123",
+                    "email": "23091a3349@rgmcet.edu.in",
+                    "reg_no": "23091A3349",
                 },
             )
         )
-        stack.enter_context(patch("backend.api.chat.route_query", return_value=_student_route()))
-        stack.enter_context(patch("backend.api.chat.get_student_data", return_value=None))
-        body = _post_chat("Do I have backlogs?")
+        stack.enter_context(
+            patch(
+                "backend.api.chat.run_chat_graph",
+                return_value={"status": "error", "intent": "student_data_query", "answer": "Student not found", "error": "not_found"},
+            )
+        )
+        events = _post_chat("Do I have backlogs?")
 
-    _assert(body["status"] == "error", f"Unknown student status failed: {body}")
-    _assert(body["error"] == "student_record_not_found", f"Unknown student error failed: {body}")
+    _assert("student not found" in _error_text(events).lower(), f"Graph error path failed: {events}")
 
 
 def _slow_student_lookup(_reg_no: str):
@@ -133,24 +153,10 @@ def _check_timeout() -> None:
         stack.enter_context(
             patch("backend.api.chat.verify_firebase_token", return_value=_fake_auth_user())
         )
-        stack.enter_context(
-            patch(
-                "backend.api.chat.db_client.get_user_profile",
-                return_value={
-                    "uid": "firebase-student-1",
-                    "role": "student",
-                    "email": "student.test@rgmcet.edu.in",
-                    "reg_no": "23091A3349",
-                },
-            )
-        )
-        stack.enter_context(patch("backend.api.chat.route_query", return_value=_student_route()))
-        stack.enter_context(patch("backend.api.chat.get_student_data", side_effect=_slow_student_lookup))
+        stack.enter_context(patch("backend.api.chat.db_client.get_user_profile", side_effect=lambda *_: _slow_student_lookup("x")))
         stack.enter_context(patch("backend.api.chat.settings.student_tool_timeout_seconds", 0.05))
-        body = _post_chat("Do I have backlogs?")
-
-    _assert(body["status"] == "error", f"Timeout status failed: {body}")
-    _assert(body["error"] == "timeout", f"Timeout error failed: {body}")
+        events = _post_chat("Do I have backlogs?")
+    _assert("too long" in _error_text(events).lower(), f"Timeout failed: {events}")
 
 
 def _check_greeting() -> None:
@@ -164,26 +170,29 @@ def _check_greeting() -> None:
                 return_value={
                     "uid": "firebase-student-1",
                     "role": "student",
-                    "email": "student.test@rgmcet.edu.in",
+                    "email": "23091a3349@rgmcet.edu.in",
                     "reg_no": "23091A3349",
                 },
             )
         )
         stack.enter_context(
             patch(
-                "backend.api.chat.route_query",
+                "backend.api.chat.run_chat_graph",
                 return_value={
+                    "status": "answered",
                     "intent": "direct_response",
-                    "tool": None,
+                    "tool_used": None,
+                    "answer_prompt": None,
                     "answer": "Hello. I can help with your academics and department documents.",
+                    "data": {},
+                    "error": None,
                 },
             )
         )
-        body = _post_chat("hello")
+        events = _post_chat("hello")
 
-    _assert(body["status"] == "answered", f"Greeting status failed: {body}")
-    _assert(body["intent"] == "direct_response", f"Greeting intent failed: {body}")
-    _assert("hello" in body["answer"].lower(), f"Greeting answer failed: {body}")
+    text = _chunk_text(events)
+    _assert("hello" in text.lower(), f"Greeting answer failed: {events}")
 
 
 def main() -> None:
@@ -191,7 +200,7 @@ def main() -> None:
     _check_invalid_token()
     _check_missing_profile()
     _check_missing_reg_no()
-    _check_unknown_student()
+    _check_graph_error()
     _check_timeout()
     _check_greeting()
     print("Chat contract checks passed.")

@@ -1,5 +1,6 @@
 import sys
 import tempfile
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -39,6 +40,30 @@ class DummyEmbeddings:
 def _assert(condition: bool, message: str) -> None:
     if not condition:
         raise RuntimeError(message)
+
+
+def _parse_sse_events(raw: str) -> list[dict]:
+    events: list[dict] = []
+    for block in raw.split("\n\n"):
+        line = block.strip()
+        if not line.startswith("data: "):
+            continue
+        try:
+            events.append(json.loads(line[6:].strip()))
+        except json.JSONDecodeError:
+            continue
+    return events
+
+
+def _chunk_text(events: list[dict]) -> str:
+    return "".join(str(event.get("content", "")) for event in events if event.get("type") == "chunk")
+
+
+def _first_error(events: list[dict]) -> str:
+    for event in events:
+        if event.get("type") == "error":
+            return str(event.get("content", ""))
+    return ""
 
 
 def _escape_pdf_text(text: str) -> str:
@@ -90,10 +115,10 @@ def _build_pdf(lines: list[str]) -> bytes:
 
 def _fake_auth_user() -> AuthUser:
     return AuthUser(
-        uid="dev-student-23091A3349",
-        email="student.test@rgmcet.edu.in",
-        reg_no_hint="23091A3349",
-        role_hint="student",
+        uid="dev-hod-fac001",
+        email="hod@rgmcet.edu.in",
+        faculty_id_hint="FAC001",
+        role_hint="hod",
     )
 
 
@@ -109,6 +134,14 @@ def main() -> None:
         "Students with zero backlogs and CGPA above 7.0 are eligible for campus placement drives.",
         "Internships are encouraged before the placement season begins.",
     ]
+
+    class _Chunk:
+        def __init__(self, content: str):
+            self.content = content
+
+    class _FakeStreamingClient:
+        async def astream(self, _messages):
+            yield _Chunk("The policy says internships are encouraged before the placement season begins.")
 
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
         temp_path = Path(temp_dir)
@@ -126,16 +159,26 @@ def main() -> None:
             patch("backend.rag.retrieve.settings.chroma_dir", chroma_dir), \
             patch("backend.rag.ingest.get_embeddings", return_value=DummyEmbeddings()), \
             patch("backend.rag.retrieve.get_embeddings", return_value=DummyEmbeddings()), \
+            patch("backend.llm.brain.get_streaming_client", return_value=_FakeStreamingClient()), \
             patch(
-                "backend.api.chat.route_query",
+                "backend.api.chat.run_chat_graph",
                 side_effect=[
-                    {"intent": "document_query", "tool": "retrieve_documents", "answer": ""},
-                    {"intent": "document_query", "tool": "retrieve_documents", "answer": ""},
+                    {
+                        "status": "answered",
+                        "intent": "document_query",
+                        "tool_used": "search_department_documents",
+                        "answer_prompt": [{"role": "system", "content": "Use provided policy snippets."}],
+                        "data": {"sources": ["placement_policy.pdf"]},
+                        "error": None,
+                    },
+                    {
+                        "status": "error",
+                        "intent": "document_query",
+                        "tool_used": "search_department_documents",
+                        "answer": "No relevant documents found.",
+                        "error": "no_document_match",
+                    },
                 ],
-            ), \
-            patch(
-                "backend.api.chat.generate_document_answer",
-                return_value="The policy says internships are encouraged before the placement season begins.",
             ):
 
             _clean_chroma_state()
@@ -155,24 +198,19 @@ def main() -> None:
                 headers={"Authorization": "Bearer dev:23091A3349"},
                 json={"message": MATCHING_QUESTION},
             )
-            match_body = match_response.json()
-            _assert(match_response.status_code == 200, f"Match status failed: {match_body}")
-            _assert(match_body["status"] == "answered", f"Match failed: {match_body}")
-            _assert(match_body["intent"] == "document_query", f"Match intent failed: {match_body}")
-            _assert(match_body["tool_used"] == "retrieve_documents", f"Match tool failed: {match_body}")
-            _assert(match_body["data"].get("sources"), f"Match sources missing: {match_body}")
-            _assert("placement" in match_body["answer"].lower(), f"Match answer weak: {match_body}")
+            match_events = _parse_sse_events(match_response.text)
+            _assert(match_response.status_code == 200, f"Match status failed: {match_response.text}")
+            _assert(any(e.get("type") == "done" and e.get("intent") == "document_query" for e in match_events), f"Match intent failed: {match_events}")
+            _assert("placement" in _chunk_text(match_events).lower(), f"Match answer weak: {match_events}")
 
             no_match_response = client.post(
                 "/chat",
                 headers={"Authorization": "Bearer dev:23091A3349"},
                 json={"message": NO_MATCH_QUESTION},
             )
-            no_match_body = no_match_response.json()
-            _assert(no_match_response.status_code == 200, f"No-match status failed: {no_match_body}")
-            _assert(no_match_body["status"] == "error", f"No-match status failed: {no_match_body}")
-            _assert(no_match_body["intent"] == "document_query", f"No-match intent failed: {no_match_body}")
-            _assert(no_match_body["error"] == "no_document_match", f"No-match error failed: {no_match_body}")
+            no_match_events = _parse_sse_events(no_match_response.text)
+            _assert(no_match_response.status_code == 200, f"No-match status failed: {no_match_response.text}")
+            _assert("no relevant documents found" in _first_error(no_match_events).lower(), f"No-match error failed: {no_match_events}")
 
     print("Document flow verification passed.")
 

@@ -5,52 +5,54 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Sign In | Department AI</title>
     <link rel="stylesheet" href="/frontend/css/styles.css" />
-    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
   </head>
-  <body class="auth-page-body">
-    <main class="auth-card">
-      <div class="auth-logo">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </div>
-      
-      <h1 class="auth-title">Welcome back</h1>
-      
-      <form id="login-form">
-        <div class="form-group">
-          <label for="email" style="font-size: 14px; font-weight: 500;">Email address</label>
+  <body class="login-body">
+    <main class="login-card">
+      <div class="login-card-container">
+        <div class="login-branding">
+          <img src="/frontend/assets/college_logo.png" alt="RGMCET Shield" class="login-institution-logo" id="college-logo" />
+          
+          <h1 class="login-h1">RGM College of Engineering <span class="login-title-secondary">and Technology</span></h1>
+          <h2 class="login-h2">Department of CSE AI & ML</h2>
+        </div>
+        
+        <div class="login-divider"></div>
+        
+        <form id="login-form">
+        <div class="login-input-group">
+          <label class="login-label">Student or Faculty Email</label>
           <input
             id="email"
             type="email"
-            class="form-input"
-            placeholder="student.test@rgmcet.edu.in"
+            class="login-field"
+            placeholder="e.g. 23091A33xx@rgmcet.edu.in"
             required
+            autocomplete="email"
           />
         </div>
-
-        <div class="form-group">
-          <label for="password" style="font-size: 14px; font-weight: 500;">Login code</label>
+        <div class="login-input-group">
+          <label class="login-label">Password</label>
           <input
             id="password"
             type="password"
-            class="form-input"
-            placeholder="e.g. MUKK2006"
+            class="login-field"
+            placeholder="Enter your password"
             required
+            autocomplete="current-password"
           />
         </div>
-
-        <button type="submit" class="primary-button">Continue</button>
+        <button type="submit" class="login-submit-btn">
+          <span class="btn-text">Sign In</span>
+          <span class="btn-arrow">→</span>
+          <span class="btn-spinner" style="display: none;">⟳</span>
+        </button>
       </form>
-
-      <p class="status" id="auth-status" style="margin-top: 16px; font-size: 14px; min-height: 20px;"></p>
       
-      <div style="margin-top: 24px; border-top: 1px solid var(--border-divider); padding-top: 24px;">
-        <p style="font-size: 14px; color: var(--text-secondary);">
-          Don't have an account? Contact your department HOD.
-        </p>
+      <div id="auth-status" class="auth-status-badge" style="display: none;"></div>
+      
+      <div class="login-footer">
+        RGMCET Department of CSE AI & ML
+      </div>
       </div>
     </main>
 

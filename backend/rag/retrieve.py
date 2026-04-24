@@ -66,7 +66,7 @@ def _similarity_from_distance(distance: float | None) -> float | None:
     return round(1 / (1 + float(distance)), 4)
 
 
-def retrieve_documents(query: str, k: int = 3) -> list[dict[str, Any]]:
+def retrieve_documents(query: str, k: int = 3, role: str = "student") -> list[dict[str, Any]]:
     if not settings.chroma_dir.exists():
         return []
 
@@ -98,9 +98,15 @@ def retrieve_documents(query: str, k: int = 3) -> list[dict[str, Any]]:
     query_terms = _query_terms(query)
     docs: list[dict[str, Any]] = []
 
+    normalized_role = str(role or "student").strip().lower()
     for text, metadata, distance in zip(documents, metadatas, distances):
         text = str(text or "").strip()
         if not text:
+            continue
+
+        metadata = metadata or {}
+        visibility = str(metadata.get("visibility", "student")).strip().lower()
+        if normalized_role == "student" and visibility == "faculty":
             continue
 
         matched_terms = sorted(
@@ -109,7 +115,6 @@ def retrieve_documents(query: str, k: int = 3) -> list[dict[str, Any]]:
         if query_terms and not matched_terms:
             continue
 
-        metadata = metadata or {}
         docs.append(
             {
                 "text": text,
@@ -119,6 +124,7 @@ def retrieve_documents(query: str, k: int = 3) -> list[dict[str, Any]]:
                     "document": metadata.get("source", "Unknown"),
                     "page": metadata.get("page"),
                     "chunk_index": metadata.get("chunk_index"),
+                    "visibility": visibility,
                 },
             }
         )

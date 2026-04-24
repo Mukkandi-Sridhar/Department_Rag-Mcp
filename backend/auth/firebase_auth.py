@@ -10,6 +10,7 @@ from backend.core.firebase_app import initialize_firebase_app
 class AuthUser:
     uid: str
     email: str | None = None
+    display_name: str | None = None
     reg_no_hint: str | None = None
     role_hint: str | None = None
     faculty_id_hint: str | None = None
@@ -35,73 +36,39 @@ def _extract_bearer_token(authorization: str | None) -> str:
 def verify_firebase_token(authorization: str | None) -> AuthUser:
     token = _extract_bearer_token(authorization)
 
-    if settings.auth_mode == "dev":
-        if not token.startswith("dev:"):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Use Bearer dev:<reg_no> in AUTH_MODE=dev",
-            )
-        parts = [part.strip() for part in token.split(":")]
-
-        if len(parts) == 2:
-            reg_no = parts[1].upper()
-            return AuthUser(
-                uid=f"dev-student-{reg_no}",
-                email=None,
-                reg_no_hint=reg_no,
-                role_hint="student",
-            )
-
-        if len(parts) == 3 and parts[1].lower() == "student":
-            reg_no = parts[2].upper()
-            return AuthUser(
-                uid=f"dev-student-{reg_no}",
-                email=None,
-                reg_no_hint=reg_no,
-                role_hint="student",
-            )
-
-        if len(parts) == 3 and parts[1].lower() in {"faculty", "hod"}:
-            role = parts[1].lower()
-            faculty_id = parts[2]
-            return AuthUser(
-                uid=f"dev-{role}-{faculty_id}",
-                email=None,
-                role_hint=role,
-                faculty_id_hint=faculty_id,
-            )
-
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=(
-                "Use Bearer dev:<reg_no>, dev:student:<reg_no>, "
-                "dev:faculty:<faculty_id>, or dev:hod:<faculty_id> "
-                "in AUTH_MODE=dev"
-            ),
-        )
+    initialize_firebase_app()
 
     try:
         from firebase_admin import auth
-    except ImportError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="firebase-admin is not installed",
-        ) from exc
+        decoded_token = auth.verify_id_token(token)
+        uid = decoded_token.get("uid")
+        email = decoded_token.get("email")
+        
+        # Extract role/reg_no from custom claims if present
+        role_hint = decoded_token.get("role", "student")
+        reg_no_hint = decoded_token.get("reg_no")
+        faculty_id_hint = decoded_token.get("faculty_id")
 
-    try:
-        initialize_firebase_app()
-    except RuntimeError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(exc),
-        ) from exc
-
-    try:
-        decoded = auth.verify_id_token(token)
+        return AuthUser(
+            uid=uid,
+            email=email,
+            role_hint=role_hint,
+            reg_no_hint=reg_no_hint,
+            faculty_id_hint=faculty_id_hint,
+            display_name=decoded_token.get("name", email)
+        )
     except Exception as exc:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Firebase token verification failed: {exc}")
+        
+        # Determine if this was a network failure (DNS, etc)
+        details = "Invalid Firebase token"
+        exc_str = str(exc).lower()
+        if "getaddrinfo" in exc_str or "certificatefetcherror" in exc_str or "transporterror" in exc_str:
+            details = "Network error during Firebase verification. Please check your internet connection."
+
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid Firebase token",
+            detail=details,
         ) from exc
-
-    return AuthUser(uid=decoded["uid"], email=decoded.get("email"))

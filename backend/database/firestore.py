@@ -128,6 +128,56 @@ class DatabaseClient:
         db = self._get_firestore()
         db.collection("chat_logs").add(entry)
 
+    def get_chat_sessions(self, uid: str) -> list[dict[str, Any]]:
+        if settings.data_backend == "csv":
+            return []
+        db = self._get_firestore()
+        # Fetching sessions sub-collection for a user
+        docs = db.collection("user_chats").document(uid).collection("sessions").order_by("updated_at", direction="DESCENDING").stream()
+        return [{"id": doc.id, **doc.to_dict()} for doc in docs]
+
+    def get_chat_session_history(self, uid: str, session_id: str) -> list[dict[str, Any]]:
+        if settings.data_backend == "csv":
+            return []
+        db = self._get_firestore()
+        doc = db.collection("user_chats").document(uid).collection("sessions").document(session_id).get()
+        if not doc.exists:
+            return []
+        return doc.to_dict().get("messages", [])
+
+    def save_chat_turn(self, uid: str, session_id: str, message: str, answer: str, intent: str = None, tool_used: str = None) -> None:
+        if settings.data_backend == "csv":
+            return
+
+        from firebase_admin import firestore
+        db = self._get_firestore()
+        doc_ref = db.collection("user_chats").document(uid).collection("sessions").document(session_id)
+        
+        # Consistent with frontend message structure + metadata
+        now = datetime.now(timezone.utc).timestamp()
+        chat_turn = {
+            "query": message,
+            "answer": answer,
+            "intent": intent,
+            "tool_used": tool_used,
+            "timestamp": now
+        }
+        
+        doc = doc_ref.get()
+        update_data = {"updated_at": now}
+        
+        if not doc.exists:
+            # Set initial title and creation time
+            update_data["title"] = message[:40] + ("..." if len(message) > 40 else "")
+            update_data["created_at"] = now
+            doc_ref.set(update_data)
+        else:
+            doc_ref.update(update_data)
+            
+        doc_ref.update({
+            "messages": firestore.ArrayUnion([chat_turn])
+        })
+
     def _get_student_from_csv(self, reg_no: str) -> dict[str, Any] | None:
         path = Path(settings.csv_path)
         if not path.exists():

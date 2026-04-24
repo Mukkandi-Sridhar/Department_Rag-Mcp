@@ -2,8 +2,6 @@ import asyncio
 import time
 from typing import Any
 import json
-import re
-import re
 
 from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import StreamingResponse
@@ -15,6 +13,7 @@ from backend.database.neo4j_client import db_client
 from backend.orchestration import run_chat_graph
 from backend.llm.intent import normalize_query
 from backend.llm.responses import build_response
+from backend.core.policy import is_supported_role, normalize_role
 
 router = APIRouter()
 
@@ -24,6 +23,7 @@ class ChatHistoryItem(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
+    session_id: str | None = None
     history: list[ChatHistoryItem] = Field(default_factory=list)
 
 def _duration_ms(started_at: float) -> int:
@@ -49,44 +49,23 @@ def _base_log(
         "error": response["error"],
     }
 
-def _mask_pii(text: str) -> str:
-    if not text:
-        return text
-    text = re.sub(r"\b\d\.\d\b", "[REDACTED_SCORE]", text)
-    text = re.sub(r"\d{10}", "[REDACTED_PHONE]", text)
-    return text
-
 def _safe_log(entry: dict[str, Any]) -> None:
-    """Saves chat history to Firestore in a single document per user."""
+    """Saves chat history to Firestore in sessions."""
     uid = entry.get("uid")
-    if not uid:
+    session_id = entry.get("session_id")
+    if not uid or not session_id:
         return
 
     try:
-        from backend.core.firebase_app import get_firestore_client
-        from firebase_admin import firestore
-        
-        db = get_firestore_client()
-        # Document ID is the user's UID. Each message is appended to the 'messages' array.
-        doc_ref = db.collection("user_chats").document(uid)
-        
-        # We append: {timestamp, message, answer, intent, status}
-        chat_data = {
-            "timestamp": time.time(),
-            "query": entry.get("message"),
-            "answer": entry.get("answer"),
-            "intent": entry.get("intent"),
-            "tool_used": entry.get("tool_used"),
-            "status": entry.get("status")
-        }
-        
-        doc_ref.set({
-            "updated_at": time.time(),
-            "messages": firestore.ArrayUnion([chat_data])
-        }, merge=True)
-        
+        db_client.save_chat_turn(
+            uid=uid,
+            session_id=session_id,
+            message=entry.get("message"),
+            answer=entry.get("answer"),
+            intent=entry.get("intent"),
+            tool_used=entry.get("tool_used")
+        )
     except Exception as e:
-        # Silently fail logging to avoid breaking user experience
         print(f"FAILED TO SAVE TO FIRESTORE: {e}")
 
 def _finish(
@@ -94,6 +73,7 @@ def _finish(
     started_at: float,
     uid: str | None,
     reg_no: str | None,
+    session_id: str | None,
     message: str,
     intent: str,
     status: str,
@@ -111,17 +91,38 @@ def _finish(
         error=error,
         duration_ms=_duration_ms(started_at),
     )
-    _safe_log(
-        _base_log(
-            uid=uid,
-            reg_no=reg_no,
-            message=message,
-            intent=intent,
-            tool_used=tool_used,
-            response=response,
-        )
+    
+    log_entry = _base_log(
+        uid=uid,
+        reg_no=reg_no,
+        message=message,
+        intent=intent,
+        tool_used=tool_used,
+        response=response,
     )
+    log_entry["session_id"] = session_id
+    log_entry["answer"] = answer
+    _safe_log(log_entry)
+    
     return response
+
+@router.get("/session-history")
+async def get_sessions(authorization: str | None = Header(default=None)):
+    try:
+        auth_user = verify_firebase_token(authorization)
+        sessions = await asyncio.to_thread(db_client.get_chat_sessions, auth_user.uid)
+        return {"status": "answered", "data": sessions}
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+@router.get("/session-history/{session_id}")
+async def get_session_history(session_id: str, authorization: str | None = Header(default=None)):
+    try:
+        auth_user = verify_firebase_token(authorization)
+        history = await asyncio.to_thread(db_client.get_chat_session_history, auth_user.uid, session_id)
+        return {"status": "answered", "data": history}
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=str(e))
 
 @router.post("/chat")
 async def chat(
@@ -132,6 +133,7 @@ async def chat(
     intent = "unknown"
     uid = None
     reg_no = None
+    session_id = request.session_id
     current_tool = None
     original_message = request.message or ""
     query = normalize_query(original_message)
@@ -149,6 +151,7 @@ async def chat(
             started_at=started_at,
             uid=uid,
             reg_no=reg_no,
+            session_id=session_id,
             message=original_message,
             intent="unclear_query",
             status="needs_clarification",
@@ -171,6 +174,7 @@ async def chat(
                 started_at=started_at,
                 uid=uid,
                 reg_no=reg_no,
+                session_id=session_id,
                 message=original_message,
                 intent=intent,
                 status="error",
@@ -180,14 +184,15 @@ async def chat(
             async def err_stream(): yield f"data: {json.dumps({'type': 'error', 'content': payload['answer']})}\n\n"
             return StreamingResponse(err_stream(), media_type="text/event-stream")
 
-        role = str(profile.get("role", "")).lower()
+        role = normalize_role(profile.get("role"))
         reg_no = str(profile.get("reg_no", "")).strip().upper()
 
-        if role not in {"student", "faculty", "hod"}:
+        if not is_supported_role(role):
             payload = _finish(
                 started_at=started_at,
                 uid=uid,
                 reg_no=reg_no or None,
+                session_id=session_id,
                 message=original_message,
                 intent=intent,
                 status="error",
@@ -202,6 +207,7 @@ async def chat(
                 started_at=started_at,
                 uid=uid,
                 reg_no=None,
+                session_id=session_id,
                 message=original_message,
                 intent=intent,
                 status="error",
@@ -234,7 +240,7 @@ async def chat(
 
             if graph_result.get("status") == "error":
                 payload = _finish(
-                    started_at=started_at, uid=uid, reg_no=reg_no, message=original_message,
+                    started_at=started_at, uid=uid, reg_no=reg_no, session_id=session_id, message=original_message,
                     intent=intent, status="error", answer=graph_result.get("answer", "Error"),
                     error=graph_result.get("error", "graph_error")
                 )
@@ -244,7 +250,7 @@ async def chat(
             answer_prompt = graph_result.get("answer_prompt")
             if not answer_prompt:
                 payload = _finish(
-                    started_at=started_at, uid=uid, reg_no=reg_no, message=original_message,
+                    started_at=started_at, uid=uid, reg_no=reg_no, session_id=session_id, message=original_message,
                     intent=intent, status=graph_result.get("status", "error"), answer=graph_result.get("answer", "")
                 )
                 yield f"data: {json.dumps({'type': 'chunk', 'content': payload['answer']})}\n\n"
@@ -269,11 +275,11 @@ async def chat(
                     full_answer = fallback
                     yield f"data: {json.dumps({'type': 'chunk', 'content': fallback})}\n\n"
                     
-            except Exception as e:
-                yield f"data: {json.dumps({'type': 'error', 'content': f'Streaming failed: {str(e)}'})}\n\n"
+            except Exception:
+                yield f"data: {json.dumps({'type': 'error', 'content': 'Response streaming failed. Please try again.'})}\n\n"
 
             _finish(
-                started_at=started_at, uid=uid, reg_no=reg_no, message=original_message,
+                started_at=started_at, uid=uid, reg_no=reg_no, session_id=session_id, message=original_message,
                 intent=intent, status="answered", answer=full_answer, 
                 data=graph_result.get("data"), tool_used=current_tool
             )
@@ -283,7 +289,7 @@ async def chat(
 
     except asyncio.TimeoutError:
         payload = _finish(
-            started_at=started_at, uid=uid, reg_no=reg_no, message=original_message,
+            started_at=started_at, uid=uid, reg_no=reg_no, session_id=session_id, message=original_message,
             intent=intent, status="error", answer="Request took too long. Please try again.", error="timeout"
         )
         async def err_stream(): yield f"data: {json.dumps({'type': 'error', 'content': payload['answer']})}\n\n"
@@ -293,8 +299,8 @@ async def chat(
         logger_msg = traceback.format_exc()
         print(f"Chat execution error: {logger_msg}")
         payload = _finish(
-            started_at=started_at, uid=uid, reg_no=reg_no, message=original_message,
-            intent=intent, status="error", answer=f"Internal Server Error: {str(exc)}", error="internal_error"
+            started_at=started_at, uid=uid, reg_no=reg_no, session_id=session_id, message=original_message,
+            intent=intent, status="error", answer="Internal Server Error", error="internal_error"
         )
         async def err_stream(): yield f"data: {json.dumps({'type': 'error', 'content': payload['answer']})}\n\n"
         return StreamingResponse(err_stream(), media_type="text/event-stream")
